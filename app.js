@@ -679,7 +679,7 @@ function willkommen(einladung) {
         <button class="knopf voll safran" id="wBeitreten">Trip beitreten</button>
       ` : `
         <button class="knopf voll safran" id="wBangkok">🇹🇭 Bangkok-Trip anlegen</button>
-        <p class="klein" style="text-align:center;margin:6px 0 0">Mit allen 19 Zielen von eurem Zettel</p>
+        <p class="klein" style="text-align:center;margin:6px 0 0">Mit allen 19 Zielen von eurem Zettel und eurem Hotel</p>
         <div class="oder">oder</div>
         <button class="knopf voll" id="wCode">Ich habe einen Einladungscode</button>
         <button class="knopf voll leise" id="wLeer" style="margin-top:8px">Leeren Trip anlegen</button>
@@ -869,6 +869,7 @@ function syncDialog() {
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 function katRaten(r) {
   const t = (r.type || '') + ' ' + (r.category || r.class || '') + ' ' + (r.name || '');
+  if (/hotel|hostel|guest_house|motel|apartment|resort/i.test(t)) return 'hotel';
   if (/place_of_worship|temple|wat |^wat|church|mosque|shrine/i.test(t)) return 'tempel';
   if (/market|marketplace|bazaar/i.test(t)) return 'markt';
   if (/park|garden|nature|forest|beach/i.test(t)) return 'park';
@@ -885,10 +886,27 @@ function katRaten(r) {
 
 async function suchen(q, beschraenkt) {
   const b = map.getBounds();
-  const p = new URLSearchParams({ format: 'jsonv2', q, limit: beschraenkt ? '1' : '8', 'accept-language': 'de,en', viewbox: [b.getWest() - 1, b.getNorth() + 1, b.getEast() + 1, b.getSouth() - 1].join(',') });
-  const r = await fetch(NOMINATIM + '?' + p);
-  if (!r.ok) throw new Error('Suche fehlgeschlagen');
-  return (await r.json()).map((x) => ({ n: x.name || x.display_name.split(',')[0], ort: x.display_name, lat: +x.lat, lng: +x.lon, k: katRaten(x) }));
+  // OpenStreetMap ist bei Apostrophen und Zusätzen streng: "Queen's Park" findet "Queen’s Park" nicht.
+  // Darum nacheinander lockerere Varianten probieren, zuletzt mit weggelassenen Wörtern am Ende.
+  const [kopf, ...rest] = q.split(',');
+  const woerter = kopf.replace(/['’`´]s?\b/g, '').trim().split(/\s+/);
+  const varianten = [q, q.replace(/'/g, '’'), [woerter.join(' '), ...rest].join(',')];
+  for (let n = woerter.length - 1; n >= 2 && varianten.length < 5; n--) varianten.push([woerter.slice(0, n).join(' '), ...rest].join(','));
+  for (const v of [...new Set(varianten)]) {
+    const p = new URLSearchParams({ format: 'jsonv2', q: v, limit: '8', 'accept-language': 'de,en', viewbox: [b.getWest() - 1, b.getNorth() + 1, b.getEast() + 1, b.getSouth() - 1].join(',') });
+    const r = await fetch(NOMINATIM + '?' + p);
+    if (!r.ok) throw new Error('Suche fehlgeschlagen');
+    const treffer = await r.json();
+    if (treffer.length) {
+      // Was nah an der Karte liegt, zuerst
+      const c = map.getCenter();
+      const weit = (x) => Math.hypot(x.lat - c.lat, (x.lng - c.lng) * Math.cos(c.lat * Math.PI / 180));
+      const liste = treffer.map((x) => ({ n: x.name || x.display_name.split(',')[0], ort: x.display_name, lat: +x.lat, lng: +x.lon, k: katRaten(x) })).sort((a, b2) => weit(a) - weit(b2));
+      return beschraenkt ? liste.slice(0, 1) : liste;
+    }
+    await new Promise((res) => setTimeout(res, 1000)); // Nominatim: höchstens 1 Anfrage pro Sekunde
+  }
+  return [];
 }
 
 function koordinatenLesen(text) {

@@ -1,6 +1,7 @@
 // Kategorien und die Bangkok-Liste vom Zettel
 
 export const KATEGORIEN = {
+  hotel: { emoji: '🏨', name: 'Unterkunft' },
   tempel: { emoji: '🛕', name: 'Tempel' },
   markt: { emoji: '🏮', name: 'Markt' },
   park: { emoji: '🌳', name: 'Park & Natur' },
@@ -20,6 +21,7 @@ export const BANGKOK = {
   name: 'Bangkok',
   emoji: '🇹🇭',
   orte: [
+    ['Marriott Marquis Queen’s Park', 'hotel', 13.73026, 100.56571, 'Unser Hotel – Sukhumvit Soi 22, direkt am Benjakitti Park. BTS Phrom Phong / MRT Queen Sirikit National Convention Centre.'],
     ['Chatuchak Weekend Market', 'markt', 13.80027, 100.55112, 'Nur Samstag & Sonntag – ihr wolltet am Sonntag hin. Früh kommen, mittags wird es sehr heiß. MRT Chatuchak Park / BTS Mo Chit.'],
     ['Wat Arun', 'tempel', 13.7439, 100.48851, 'Tempel der Morgenröte. Fähre ab Tha Tien (bei Wat Pho) für ein paar Baht. Am schönsten zum Sonnenuntergang vom anderen Ufer. Schultern und Knie bedecken.'],
     ['Grand Palace', 'tempel', 13.74935, 100.49186, 'Strenger Dresscode: Schultern und Knie bedeckt. Möglichst früh am Morgen hin. Wat Phra Kaew (Smaragd-Buddha) liegt auf dem Gelände.'],
