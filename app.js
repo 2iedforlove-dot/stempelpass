@@ -900,10 +900,11 @@ async function suchenPhoton(q) {
   });
 }
 
+// Reihenfolge der Suche (Relevanz) beibehalten, nur weit entfernte Treffer (> ~300 km) nach hinten
 function nachNaehe(liste) {
   const c = map.getCenter();
-  const weit = (x) => Math.hypot(x.lat - c.lat, (x.lng - c.lng) * Math.cos(c.lat * Math.PI / 180));
-  return liste.sort((a, b) => weit(a) - weit(b));
+  const weit = (x) => Math.hypot(x.lat - c.lat, (x.lng - c.lng) * Math.cos(c.lat * Math.PI / 180)) > 3 ? 1 : 0;
+  return liste.map((x, i) => [x, i]).sort((a, b) => weit(a[0]) - weit(b[0]) || a[1] - b[1]).map((x) => x[0]);
 }
 
 async function suchen(q, beschraenkt) {
