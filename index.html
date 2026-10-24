@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Stempelpass</title>
+<meta name="description" content="Reiseziele auf der Karte abstempeln – gemeinsam, auch offline.">
+<meta name="theme-color" content="#1d1a2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stempelpass">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <path id="stempelKreis" d="M50,50 m-33,0 a33,33 0 1,1 66,0 a33,33 0 1,1 -66,0"/>
+  </defs>
+</svg>
+
+<div id="map" aria-label="Karte"></div>
+
+<header class="oben">
+  <button class="trip-knopf" id="tripKnopf" aria-label="Trip wechseln">
+    <span class="trip-emo" id="tripEmo">🗺️</span>
+    <span class="trip-name" id="tripName">Stempelpass</span>
+    <svg viewBox="0 0 24 24" class="pfeil" aria-hidden="true"><path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="sync" id="syncKnopf" aria-label="Sync-Status"><i></i><span>…</span></button>
+</header>
+
+<div class="seitenknoepfe" id="seitenknoepfe">
+  <button class="rund" id="einladenKnopf" aria-label="Familie einladen" title="Einladen">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 8v6M22 11h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="rund" id="ortungKnopf" aria-label="Mein Standort" title="Mein Standort">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg>
+  </button>
+</div>
+
+<button class="karten-chip" id="kartenChip" hidden></button>
+
+<div class="auswahl" id="auswahl" hidden>
+  <div class="fadenkreuz"></div>
+  <div class="auswahl-leiste">
+    <button class="knopf leise" id="auswahlAbbruch">Abbrechen</button>
+    <button class="knopf" id="auswahlOk">Hier setzen</button>
+  </div>
+</div>
+
+<section class="sheet" id="sheet" aria-label="Orte">
+  <div id="sheetInhalt"></div>
+</section>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-hg" data-zu></div>
+  <div class="modal-karte" role="dialog" aria-modal="true" id="modalKarte"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="konfetti" id="konfetti" aria-hidden="true"></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script src="vendor/basemaps.js"></script>
+<script src="vendor/nostr.bundle.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
