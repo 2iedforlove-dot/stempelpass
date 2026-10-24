@@ -1,9 +1,9 @@
-// Erzeugt die App-Icons als PNG (ohne Zusatzpakete): Tintenblau, Safran-Kreis, roter Stempelring, Haken
+// Erzeugt die App-Icons als PNG (ohne Zusatzpakete): Graphit, orangener Kreis, dunkler Stempelring, weißer Haken
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const TINTE = hex('#1d1a2b'), SAFRAN = hex('#f2a516'), CHILI = hex('#e04a36'), PAPIER = hex('#fbf7ef');
+const TINTE = hex('#141416'), SAFRAN = hex('#ff5d1f'), CHILI = hex('#3d3d43'), PAPIER = hex('#ffffff');
 
 function abstandStrecke(px, py, ax, ay, bx, by) {
   const dx = bx - ax, dy = by - ay;
@@ -25,9 +25,7 @@ function farbe(x, y) {
   if (Math.abs(rr - 0.345) < 0.022 && !luecke) c = CHILI;
   // Haken
   const d = Math.min(abstandStrecke(x, y, 0.385, 0.505, 0.47, 0.59), abstandStrecke(x, y, 0.47, 0.59, 0.635, 0.405));
-  if (d < 0.038) c = TINTE;
-  // kleiner Papier-Punkt oben rechts (Glanz)
-  if (Math.hypot(x - 0.6, y - 0.36) < 0.03 && r < 0.27) c = PAPIER;
+  if (d < 0.038) c = PAPIER;
   return c;
 }
 

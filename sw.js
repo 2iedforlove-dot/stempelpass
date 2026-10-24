@@ -1,11 +1,10 @@
 // App-Hülle offline verfügbar machen. Die große Kartendatei lädt die App selbst in den Cache "sp-karte".
-const VERSION = 'sp-v6'; // bei jeder Änderung hochzählen, sonst bleiben installierte Handys auf altem Stand
+const VERSION = 'sp-v7'; // bei jeder Änderung hochzählen, sonst bleiben installierte Handys auf altem Stand
 const HUELLE = [
-  './', 'index.html', 'app.css', 'app.js', 'sync.js', 'vorlagen.js', 'manifest.webmanifest',
+  './', 'index.html', 'app.css', 'app.js', 'sync.js', 'vorlagen.js', 'icons.js', 'feedback.js', 'manifest.webmanifest',
   'vendor/maplibre-gl.js', 'vendor/maplibre-gl.css', 'vendor/pmtiles.js', 'vendor/basemaps.js', 'vendor/nostr.bundle.js', 'vendor/qrcode.js',
-  'schrift/bricolage-500.woff2', 'schrift/bricolage-700.woff2', 'schrift/bricolage-800.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
-  'karte/sprites/light.json', 'karte/sprites/light.png', 'karte/sprites/light@2x.json', 'karte/sprites/light@2x.png',
+  'karte/sprites/dark.json', 'karte/sprites/dark.png', 'karte/sprites/dark@2x.json', 'karte/sprites/dark@2x.png',
 ];
 for (const f of ['Noto Sans Regular', 'Noto Sans Medium', 'Noto Sans Italic']) {
   for (const r of ['0-255', '256-511', '3584-3839', '8192-8447']) HUELLE.push(`karte/fonts/${f}/${r}.pbf`);

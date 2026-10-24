@@ -1,5 +1,7 @@
 import { Sync, deriveKeys, newCode, normCode } from './sync.js';
 import { KATEGORIEN, BANGKOK } from './vorlagen.js';
+import { icon, PFADE } from './icons.js';
+import { sound, haptik, tonAn, tonSetzen } from './feedback.js';
 
 const maplibregl = window.maplibregl;
 const pmtiles = window.pmtiles;
@@ -8,7 +10,7 @@ const basemaps = window.basemaps;
 // Offline-Karte: Ausschnitt aus Protomaps (OpenStreetMap), Bangkok bis Ayutthaya
 const REGION = { datei: 'karte/bangkok.pmtiles', name: 'bangkok.pmtiles', bbox: [99.85, 13.45, 100.75, 14.45], mb: 64 };
 const KARTEN_CACHE = 'sp-karte';
-const FARBEN = ['#e4572e', '#16806a', '#7b5ea7', '#2f7cf6', '#d6336c', '#b7791f', '#0e7490'];
+const FARBEN = ['#ff6b3d', '#32b47a', '#8e6cf0', '#3b8cff', '#ff4f8b', '#e3a21a', '#19a7c4'];
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -103,13 +105,13 @@ const sync = new Sync({
 });
 
 // ---------- Hilfen ----------
-function entfernung(o) {
-  if (!pos || o.lat == null) return null;
+function abstand(a, b) {
   const R = 6371e3, r = Math.PI / 180;
-  const dLat = (o.lat - pos.lat) * r, dLng = (o.lng - pos.lng) * r;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(pos.lat * r) * Math.cos(o.lat * r) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+  const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
 }
+const entfernung = (o) => (!pos || o.lat == null ? null : abstand(pos, o));
 const meter = (m) => m == null ? '' : m < 950 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toLocaleString('de-AT', { maximumFractionDigits: m < 10000 ? 1 : 0 }) + ' km';
 const wann = (ms) => {
   const d = new Date(ms), heute = new Date();
@@ -117,7 +119,9 @@ const wann = (ms) => {
   if (d.toDateString() === heute.toDateString()) return 'heute ' + uhr;
   return d.toLocaleDateString('de-AT', { weekday: 'short', day: 'numeric', month: 'numeric' }) + ' ' + uhr;
 };
-const kat = (k) => KATEGORIEN[k] || KATEGORIEN.sonst;
+const kat = (k) => KATEGORIEN[k] ? { ...KATEGORIEN[k], id: k } : { ...KATEGORIEN.sonst, id: 'sonst' };
+const katIcon = (k, g = 22) => icon(kat(k).id, g);
+const pfeilRechts = () => icon('zurueck', 18, 2.4).replace('class="ic"', 'class="ic" style="transform:rotate(180deg)"');
 
 function toast(text, aktion, fn, dauer = 3200) {
   const el = $('#toast');
@@ -128,17 +132,16 @@ function toast(text, aktion, fn, dauer = 3200) {
   toast.t = setTimeout(() => el.classList.remove('zeigen'), dauer);
 }
 
-function stempelSvg() {
-  return `<svg viewBox="0 0 100 100" aria-hidden="true">
-    <circle class="leer" cx="50" cy="50" r="44"/>
-    <path class="haken-leer" d="M36 51l10 10 19-22"/>
-    <g class="abdruck">
-      <circle cx="50" cy="50" r="45" stroke-width="3.5"/>
-      <circle cx="50" cy="50" r="23" stroke-width="2"/>
-      <text><textPath href="#stempelKreis" startOffset="0">WAR DA ✦ WAR DA ✦ WAR DA ✦</textPath></text>
-      <path class="haken" d="M39 51l8 8 15-18"/>
-    </g>
-  </svg>`;
+// Runde Scheibe mit umlaufender Schrift (wie der Lautsprecher in der Vorlage)
+let scheibenNr = 0;
+function scheibe({ text, inhalt, klasse = '', attr = '' }) {
+  const id = 'rk' + ++scheibenNr;
+  const t = (text + ' • ').repeat(Math.max(1, Math.ceil(36 / (text.length + 3))));
+  return `<button class="scheibe ${klasse}" ${attr}>
+    <svg class="ring-text" viewBox="0 0 100 100" aria-hidden="true"><defs><path id="${id}" d="M50,50 m-40.5,0 a40.5,40.5 0 1,1 81,0 a40.5,40.5 0 1,1 -81,0"/></defs>
+      <text><textPath href="#${id}" textLength="252" lengthAdjust="spacing">${esc(t.toUpperCase())}</textPath></text></svg>
+    <span class="mitte">${inhalt}</span>
+  </button>`;
 }
 
 // ---------- Karte ----------
@@ -161,28 +164,29 @@ async function kartenQuelle() {
 }
 
 function kartenStil(url) {
-  const f = basemaps.namedFlavor('light');
+  // Graphit-Karte passend zum Glas-Design
+  const f = basemaps.namedFlavor('dark');
   Object.assign(f, {
-    background: '#efe9dd', earth: '#f4efe5', water: '#9fd2dc', park_a: '#d8e8c8', park_b: '#bfdca8',
-    wood_a: '#d6e6c6', wood_b: '#b8d8a0', scrub_a: '#dbe6cc', scrub_b: '#c4dcae', buildings: '#e6ddcd',
-    pedestrian: '#ece4d4', school: '#efe3d3', hospital: '#f1dcd8', industrial: '#e6e2db', zoo: '#d3e6cf',
-    beach: '#f2e8c8', sand: '#eee5cc', aerodrome: '#e6e2da', runway: '#f1eee8',
-    other: '#fbf8f2', minor_a: '#fbf8f2', minor_b: '#ffffff', minor_service: '#fbf8f2', major: '#fffdf8', highway: '#fde7b8',
-    highway_casing_early: '#f1c97a', highway_casing_late: '#f1c97a', bridges_highway: '#fde7b8',
-    city_label: '#3a3546', subplace_label: '#7d7688', roads_label_major: '#7d7688',
+    background: '#161618', earth: '#1c1c1f', water: '#0f1418', park_a: '#1c2320', park_b: '#1f2a24',
+    wood_a: '#1c2320', wood_b: '#1f2a24', scrub_a: '#1d2220', scrub_b: '#1f2623', buildings: '#252528',
+    other: '#2a2a2e', minor_a: '#2c2c30', minor_b: '#2c2c30', minor_service: '#28282c', major: '#36363b', highway: '#45403b',
+    bridges_major: '#36363b', bridges_highway: '#45403b', city_label: '#a1a1a8', subplace_label: '#6f6f77',
+    roads_label_major: '#77777f', roads_label_minor: '#5f5f66', roads_label_major_halo: '#161618', roads_label_minor_halo: '#161618',
+    city_label_halo: '#161618', subplace_label_halo: '#161618', ocean_label: '#4a5a66',
   });
-  const schichten = basemaps.layers('protomaps', f, { lang: 'en' }).filter((l) => l.id !== 'background');
+  // Ohne die bunten Karten-POIs: nur eure Orte sollen auffallen
+  const schichten = basemaps.layers('protomaps', f, { lang: 'en' }).filter((l) => l.id !== 'background' && l.id !== 'pois');
   return {
     version: 8,
     glyphs: abs('karte/fonts/') + '{fontstack}/{range}.pbf',
-    sprite: abs('karte/sprites/light'),
+    sprite: abs('karte/sprites/dark'),
     sources: {
       osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 19, attribution: '© OpenStreetMap' },
       protomaps: { type: 'vector', url, attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>' },
     },
     layers: [
-      { id: 'grund', type: 'background', paint: { 'background-color': '#efe9dd' } },
-      { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: 'none' }, paint: { 'raster-saturation': -0.35 } },
+      { id: 'grund', type: 'background', paint: { 'background-color': '#161618' } },
+      { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: 'none' }, paint: { 'raster-saturation': -1, 'raster-brightness-max': 0.35, 'raster-contrast': 0.1 } },
       ...schichten,
     ],
   };
@@ -191,8 +195,7 @@ function kartenStil(url) {
 const imGebiet = (lng, lat) => lng > REGION.bbox[0] && lng < REGION.bbox[2] && lat > REGION.bbox[1] && lat < REGION.bbox[3];
 
 let map;
-const marker = new Map(); // id -> { m, el }
-let ichMarker = null;
+let karteBereit = false;
 
 async function karteStarten() {
   map = new maplibregl.Map({
@@ -203,9 +206,17 @@ async function karteStarten() {
   });
   map.touchZoomRotate.disableRotation();
   map.on('moveend', osmUmschalten);
-  map.on('load', osmUmschalten);
-  map.on('click', (e) => { if (!e.originalEvent.target.closest('.pin') && ui.ansicht === 'detail' && !auswahlAktiv) zurListe(); });
-  map.on('contextmenu', (e) => { if (!e.originalEvent.target.closest('.pin')) langDruck(e.lngLat); });
+  map.on('load', () => { osmUmschalten(); ebenenAnlegen(); karteBereit = true; neuZeichnen(); });
+  map.on('click', (e) => {
+    if (auswahlAktiv || Date.now() - langGedrueckt < 800) return;
+    const id = pinBei(e.point);
+    if (id) { sound.tick(); haptik('leicht'); detailOeffnen(id, true); } else if (ui.ansicht === 'detail') zurListe();
+  });
+  map.on('mousemove', (e) => { map.getCanvas().style.cursor = pinBei(e.point) ? 'pointer' : ''; });
+  map.on('contextmenu', (e) => {
+    const id = pinBei(e.point);
+    if (id) { langGedrueckt = Date.now(); ortMenue(id); } else langDruck(e.lngLat);
+  });
   langDruckErkennen();
 }
 
@@ -216,57 +227,134 @@ function osmUmschalten() {
   map.setLayoutProperty('osm', 'visibility', sichtbar && navigator.onLine ? 'visible' : 'none');
 }
 
+// Pins sind eine Kartenebene (WebGL) statt HTML-Elemente: dadurch kleben sie fest an der Karte und wackeln nicht
+function ebenenAnlegen() {
+  map.addSource('orte', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addSource('ich', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'ich-hof', type: 'circle', source: 'ich', paint: { 'circle-radius': 18, 'circle-color': '#3b8cff', 'circle-opacity': 0.16, 'circle-pitch-alignment': 'map' } });
+  map.addLayer({ id: 'ich-punkt', type: 'circle', source: 'ich', paint: { 'circle-radius': 7, 'circle-color': '#3b8cff', 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' } });
+  map.addLayer({
+    id: 'orte-namen', type: 'symbol', source: 'orte', minzoom: 13.5,
+    layout: {
+      'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.35],
+      'text-max-width': 9, 'text-optional': true, 'symbol-sort-key': ['-', 10, ['get', 'sort']],
+    },
+    paint: { 'text-color': '#f5f5f7', 'text-halo-color': 'rgba(10,10,12,.9)', 'text-halo-width': 1.6, 'text-opacity': ['get', 'deckkraft'] },
+  });
+  map.addLayer({
+    id: 'orte', type: 'symbol', source: 'orte',
+    layout: {
+      'icon-image': ['get', 'bild'], 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'symbol-sort-key': ['get', 'sort'], 'symbol-z-order': 'source',
+    },
+    paint: { 'icon-opacity': ['get', 'deckkraft'] },
+  });
+}
+
+// Ein Pin-Bild pro Zustand (Kategorie, gestempelt, Nummer, aktiv), auf ein Canvas gezeichnet
+function pinBild(o, aktiv) {
+  const name = `pin-${kat(o.k).id}-${o.check ? 1 : 0}-${o.nr}-${aktiv ? 1 : 0}`;
+  if (map.hasImage(name)) return name;
+  const s = aktiv ? 1.22 : 1, pr = 2;
+  const W = 52 * s, H = 56 * s;
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(W * pr); cv.height = Math.ceil(H * pr);
+  const c = cv.getContext('2d');
+  c.scale(pr * s, pr * s);
+  const cx = 23, cy = 24, r = 18.5;
+  // Körper: Kreis mit kleiner Spitze
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 8; c.shadowOffsetY = 3;
+  c.beginPath();
+  c.arc(cx, cy, r, Math.PI * 0.62, Math.PI * 2.38);
+  c.lineTo(cx, 54);
+  c.closePath();
+  if (o.check) {
+    const g = c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    g.addColorStop(0, '#ff8a4c'); g.addColorStop(0.5, '#ff5d1f'); g.addColorStop(1, '#e8420c');
+    c.fillStyle = g;
+  } else c.fillStyle = '#f4f4f6';
+  c.fill();
+  c.restore();
+  if (aktiv) { c.lineWidth = 3; c.strokeStyle = o.check ? '#ffffff' : '#ff5d1f'; c.stroke(); }
+  // Kategorie-Icon
+  c.save();
+  c.translate(cx - 9.5, cy - 9.5); c.scale(19 / 24, 19 / 24);
+  c.strokeStyle = o.check ? '#ffffff' : '#17171a';
+  c.lineWidth = 2.2; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.stroke(new Path2D(PFADE[kat(o.k).id]));
+  c.restore();
+  // Abzeichen: Nummer bzw. Haken
+  const bx = 40, by = 9;
+  c.beginPath(); c.arc(bx, by, 8.5, 0, Math.PI * 2);
+  c.fillStyle = o.check ? '#ffffff' : '#17171a'; c.fill();
+  c.lineWidth = 1.5; c.strokeStyle = o.check ? '#ff5d1f' : '#f4f4f6'; c.stroke();
+  if (o.check) {
+    c.save(); c.translate(bx - 5.5, by - 5.5); c.scale(11 / 24, 11 / 24);
+    c.strokeStyle = '#ff5d1f'; c.lineWidth = 4; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.stroke(new Path2D(PFADE.haken)); c.restore();
+  } else {
+    c.fillStyle = '#ffffff'; c.font = `700 ${o.nr > 99 ? 7 : 9.5}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(o.nr), bx, by + 0.5);
+  }
+  map.addImage(name, c.getImageData(0, 0, cv.width, cv.height), { pixelRatio: pr });
+  return name;
+}
+
+function pinsZeichnen(v) {
+  if (!karteBereit) return;
+  const features = [];
+  for (const o of v ? v.orte : []) {
+    if (o.lat == null) continue;
+    const aktiv = ui.ansicht === 'detail' && ui.ortId === o.id;
+    const gefiltert = (ui.filter === 'offen' && o.check) || (ui.filter === 'erledigt' && !o.check);
+    features.push({
+      type: 'Feature', geometry: { type: 'Point', coordinates: [o.lng, o.lat] },
+      properties: { id: o.id, name: o.n, bild: pinBild(o, aktiv), sort: aktiv ? 3 : o.check ? 1 : 2, deckkraft: gefiltert ? 0.3 : 1 },
+    });
+  }
+  map.getSource('orte').setData({ type: 'FeatureCollection', features });
+}
+
+function pinBei(p) {
+  if (!karteBereit) return null;
+  const f = map.queryRenderedFeatures([[p.x - 12, p.y - 12], [p.x + 12, p.y + 12]], { layers: ['orte'] });
+  if (!f.length) return null;
+  f.sort((a, b) => b.properties.sort - a.properties.sort);
+  return f[0].properties.id;
+}
+
+function ichZeichnen() {
+  if (!karteBereit || !pos) return;
+  map.getSource('ich').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] }, properties: {} });
+}
+
 function langDruckErkennen() {
   const el = map.getCanvasContainer();
   let timer = null, start = null;
   const ab = () => { clearTimeout(timer); timer = null; };
   el.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1 || e.target.closest('.pin')) return ab();
+    if (e.touches.length !== 1) return ab();
     const t = e.touches[0];
     start = { x: t.clientX, y: t.clientY };
     ab();
     timer = setTimeout(() => {
       const r = el.getBoundingClientRect();
-      langDruck(map.unproject([start.x - r.left, start.y - r.top]));
-    }, 550);
+      const p = { x: start.x - r.left, y: start.y - r.top };
+      const id = pinBei(p);
+      langGedrueckt = Date.now();
+      if (id) { haptik('mittel'); sound.tick(); ortMenue(id); } else langDruck(map.unproject([p.x, p.y]), true);
+    }, 520);
   }, { passive: true });
   el.addEventListener('touchmove', (e) => { const t = e.touches[0]; if (start && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) ab(); }, { passive: true });
   el.addEventListener('touchend', ab);
   el.addEventListener('touchcancel', ab);
 }
 
-function langDruck(lngLat) {
-  if (!aktuell || $('#modal').hidden === false || Date.now() - langGedrueckt < 1200) return;
-  if (navigator.vibrate) navigator.vibrate(15);
+function langDruck(lngLat, schonGeprueft) {
+  if (!aktuell || $('#modal').hidden === false || (!schonGeprueft && Date.now() - langGedrueckt < 1200)) return;
+  haptik('mittel');
   ortEditor({ lat: lngLat.lat, lng: lngLat.lng });
-}
-
-function pinsZeichnen(v) {
-  const da = new Set();
-  for (const o of v ? v.orte : []) {
-    if (o.lat == null) continue;
-    da.add(o.id);
-    let p = marker.get(o.id);
-    if (!p) {
-      const el = document.createElement('button');
-      el.className = 'pin';
-      el.setAttribute('aria-label', o.n);
-      el.addEventListener('click', (e) => { e.stopPropagation(); detailOeffnen(el.dataset.id, true); });
-      const m = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([o.lng, o.lat]).addTo(map);
-      p = { m, el };
-      marker.set(o.id, p);
-    }
-    p.el.dataset.id = o.id;
-    p.m.setLngLat([o.lng, o.lat]);
-    const inhalt = `<span class="pin-koerper"><span class="pin-emo">${kat(o.k).emoji}</span></span><span class="pin-nr"><span>${o.nr}</span></span>`;
-    if (p.el.dataset.inhalt !== inhalt) { p.el.innerHTML = inhalt; p.el.dataset.inhalt = inhalt; }
-    p.el.classList.toggle('erledigt', !!o.check);
-    p.el.classList.toggle('aktiv', ui.ansicht === 'detail' && ui.ortId === o.id);
-    const gefiltert = (ui.filter === 'offen' && o.check) || (ui.filter === 'erledigt' && !o.check);
-    p.el.classList.toggle('gedimmt', gefiltert);
-    p.el.style.zIndex = ui.ortId === o.id ? 5 : o.check ? 1 : 2;
-  }
-  for (const [id, p] of marker) if (!da.has(id)) { p.m.remove(); marker.delete(id); }
 }
 
 function allesZeigen(sanft = true) {
@@ -287,7 +375,7 @@ function allesZeigen(sanft = true) {
 
 function polster(extra = 30) {
   const breit = innerWidth >= 760;
-  return { top: 70 + extra, bottom: breit ? extra : sichtbarHoehe() + extra, left: breit ? 432 + extra : extra, right: extra + 40 };
+  return { top: 80 + extra, bottom: breit ? extra : sichtbarHoehe() + extra, left: breit ? 442 + extra : extra, right: extra + 40 };
 }
 
 // ---------- Standort ----------
@@ -299,10 +387,7 @@ function ortungStarten(zentrieren) {
   if (ortungId == null) {
     ortungId = navigator.geolocation.watchPosition((p) => {
       pos = { lat: p.coords.latitude, lng: p.coords.longitude, genau: p.coords.accuracy };
-      if (!ichMarker) {
-        const el = document.createElement('div'); el.className = 'ich';
-        ichMarker = new maplibregl.Marker({ element: el }).setLngLat([pos.lng, pos.lat]).addTo(map);
-      } else ichMarker.setLngLat([pos.lng, pos.lat]);
+      ichZeichnen();
       if (zentrieren && erstes) map.easeTo({ center: [pos.lng, pos.lat], zoom: Math.max(map.getZoom(), 14), padding: polster(), duration: 800 });
       erstes = false;
       sheetZeichnenGedrosselt();
@@ -324,7 +409,7 @@ function snapY(s) {
   const H = innerHeight;
   if (s === 'zu') return H - 150;
   if (s === 'voll') return Math.max(64, H * 0.09);
-  return Math.round(H * 0.5);
+  return Math.round(H * 0.48);
 }
 function sichtbarHoehe() { return innerHeight - snapY(ui.snap); }
 
@@ -356,16 +441,15 @@ function sheetZiehen() {
       griff.removeEventListener('pointercancel', los);
       const dy = ev.clientY - startY;
       if (Math.abs(dy) < 6) {
-        // Tippen auf den Griff klappt auf bzw. zu
-        if (e.target.closest('.griff')) return sheetSetzen(ui.snap === 'zu' ? 'mitte' : ui.snap === 'mitte' ? 'voll' : 'mitte');
+        if (e.target.closest('.griff')) { sound.tick(); return sheetSetzen(ui.snap === 'zu' ? 'mitte' : ui.snap === 'mitte' ? 'voll' : 'mitte'); }
         return sheetSetzen(ui.snap, false);
       }
       const [t1, y1] = zuletzt[0];
-      const tempo = (ev.clientY - y1) / Math.max(1, performance.now() - t1); // px/ms
+      const tempo = (ev.clientY - y1) / Math.max(1, performance.now() - t1);
       const ziel = y0 + dy + tempo * 220;
-      const stufen = ['voll', 'mitte', 'zu'];
-      let best = stufen[0];
-      for (const s of stufen) if (Math.abs(snapY(s) - ziel) < Math.abs(snapY(best) - ziel)) best = s;
+      let best = 'voll';
+      for (const s of ['voll', 'mitte', 'zu']) if (Math.abs(snapY(s) - ziel) < Math.abs(snapY(best) - ziel)) best = s;
+      if (best !== ui.snap) { haptik('leicht'); sound.tick(); }
       sheetSetzen(best);
     };
     griff.addEventListener('pointermove', bewegen);
@@ -391,6 +475,23 @@ function allesZeichnen() {
   if (map) pinsZeichnen(v);
   sheetZeichnen(v);
   syncAnzeige();
+  fremdeStempelMelden(v);
+}
+
+// Wenn jemand anderes etwas abstempelt: kurz Bescheid geben
+const bekannteStempel = new Map(); // tripId -> Set
+function fremdeStempelMelden(v) {
+  if (!v || !v.meta) return;
+  const jetzt = new Set(v.orte.filter((o) => o.check).map((o) => o.id));
+  const vorher = bekannteStempel.get(aktuell);
+  bekannteStempel.set(aktuell, jetzt);
+  if (!vorher) return;
+  const neu = v.orte.filter((o) => o.check && !vorher.has(o.id) && o.check.by !== ich.id);
+  if (neu.length && neu.length <= 2) {
+    const o = neu[neu.length - 1];
+    toast(`${name(v, o.check.by)} hat „${o.n}“ gestempelt`);
+    sound.plopp(); haptik('leicht');
+  }
 }
 
 function syncAnzeige() {
@@ -400,7 +501,30 @@ function syncAnzeige() {
   const live = sync.online > 0;
   el.classList.toggle('live', live && !offen);
   el.classList.toggle('wartet', offen > 0);
-  el.querySelector('span').textContent = live ? (offen ? 'Sync …' : 'Live') : offen ? `Offline · ${offen} warten` : 'Offline';
+  el.querySelector('span').textContent = live ? (offen ? 'Sync …' : 'Live') : offen ? `Offline · ${offen}` : 'Offline';
+}
+
+function segmente(v) {
+  const n = v.orte.length;
+  const liste = [['alle', 'raster', 'Alle', n], ['offen', 'kreis', 'Offen', n - v.erledigt], ['erledigt', 'kreisHaken', 'Erledigt', v.erledigt], ['naehe', 'navi', 'Nähe', null]];
+  const i = Math.max(0, liste.findIndex((s) => s[0] === ui.filter));
+  return `<div class="segmente" style="--n:4;--i:${i}"><span class="schieber"></span>
+    ${liste.map(([id, ic, txt, z]) => `<button class="${ui.filter === id ? 'an' : ''}" data-filter="${id}">${icon(ic, 15, 2.2)}${txt}${z != null ? ` <span class="zahl">${z}</span>` : ''}</button>`).join('')}
+  </div>`;
+}
+
+function kacheln() {
+  const offline = offlineKarte
+    ? `<button class="kachel akzent" data-aktion="offline">${icon('wolkeOk')}Offline ✓</button>`
+    : laedt
+      ? `<button class="kachel" data-aktion="offline" style="--f:${ladeAnteil}">${icon('wolke')}${Math.round(ladeAnteil * 100)} %<span class="fortschritt"><i></i></span></button>`
+      : `<button class="kachel" data-aktion="offline">${icon('wolke')}Offline<span class="punkt"></span></button>`;
+  return `<div class="kacheln">
+    <button class="kachel akzent" data-aktion="hinzu">${icon('plus')}Hinzufügen</button>
+    <button class="kachel" data-aktion="einladen">${icon('leute')}Einladen</button>
+    ${offline}
+    <button class="kachel" data-aktion="alle">${icon('karte')}Übersicht</button>
+  </div>`;
 }
 
 function sheetZeichnen(v) {
@@ -414,7 +538,6 @@ function sheetZeichnen(v) {
   const scroll = box.querySelector('.scroll');
   const merk = scroll ? scroll.scrollTop : 0;
   const n = v.orte.length;
-  const offen = n - v.erledigt;
   let liste = v.orte;
   if (ui.filter === 'offen') liste = liste.filter((o) => !o.check);
   if (ui.filter === 'erledigt') liste = liste.filter((o) => o.check).sort((a, b) => b.check.at - a.check.at);
@@ -424,19 +547,19 @@ function sheetZeichnen(v) {
   const karten = liste.map((o) => {
     const d = entfernung(o);
     const unten = o.check
-      ? `<p class="von">✓ ${esc(name(v, o.check.by) === 'dir' ? 'Von dir' : 'Von ' + name(v, o.check.by))} · ${esc(wann(o.check.at))}</p>`
-      : `<p>${esc(kat(o.k).name)}${d != null ? ' · ' + meter(d) : ''}${o.notiz ? ' · ' + esc(o.notiz) : ''}</p>`;
+      ? `<p class="von">${name(v, o.check.by) === 'dir' ? 'Von dir' : 'Von ' + esc(name(v, o.check.by))} · ${esc(wann(o.check.at))}</p>`
+      : `<p>${esc(kat(o.k).name)}${d != null ? ' · ' + meter(d) : ''}</p>`;
     return `<article class="ort ${o.check ? 'erledigt' : ''}" data-id="${esc(o.id)}">
-      <div class="ort-emo">${kat(o.k).emoji}<span class="nr">${o.nr}</span></div>
+      <div class="ort-ico">${katIcon(o.k)}<span class="nr">${o.nr}</span></div>
       <div class="ort-text"><h3>${esc(o.n)}${o.lat == null ? '<span class="ohne-ort">ohne Ort</span>' : ''}</h3>${unten}</div>
-      <button class="stempel" data-stempel="${esc(o.id)}" aria-label="${o.check ? 'Stempel entfernen' : 'Abstempeln'}">${stempelSvg()}</button>
+      <button class="stempel" data-stempel="${esc(o.id)}" aria-label="${o.check ? 'Stempel entfernen' : 'Abstempeln'}">${icon('haken', 22, 2.6)}</button>
     </article>`;
   }).join('');
 
   const leer = !v.meta
-    ? `<div class="leer-hinweis"><span class="gross">⏳</span>Trip wird von den anderen Handys geladen…<br><span class="klein">Dafür braucht es kurz Internet.</span></div>`
-    : !n ? `<div class="leer-hinweis"><span class="gross">🗺️</span>Noch keine Orte. Füg den ersten hinzu!</div>`
-      : !liste.length ? `<div class="leer-hinweis">${ui.filter === 'naehe' ? 'Tippe oben rechts auf ◎, damit die Entfernungen berechnet werden.' : ui.filter === 'offen' ? '<span class="gross">🎉</span>Alles gestempelt!' : 'Noch nichts gestempelt.'}</div>` : '';
+    ? `<div class="leer-hinweis">${icon('sync', 30)}Trip wird von den anderen Handys geladen …<br><span class="klein">Dafür braucht es kurz Internet.</span></div>`
+    : !n ? `<div class="leer-hinweis">${icon('sonst', 30)}Noch keine Orte – füg den ersten hinzu!</div>`
+      : !liste.length ? `<div class="leer-hinweis">${ui.filter === 'naehe' ? 'Erlaube den Standort, dann stehen hier die nächsten Orte zuerst.' : ui.filter === 'offen' ? icon('pokal', 30) + 'Alles gestempelt!' : 'Noch nichts gestempelt.'}</div>` : '';
 
   box.innerHTML = `
     <div class="griff-zone">
@@ -445,21 +568,16 @@ function sheetZeichnen(v) {
         <div class="titel">
           <div class="eyebrow">Stempelpass</div>
           <h1>${esc(v.meta ? v.meta.n : '…')}</h1>
-          <div class="unterzeile"><span>${v.erledigt} gestempelt · ${offen} offen</span>${leute ? `<span class="leute">${leute}</span>` : ''}</div>
+          <div class="unterzeile"><span>${v.erledigt} von ${n} gestempelt</span>${leute ? `<span class="leute">${leute}</span>` : ''}</div>
         </div>
         <div class="ring" style="--p:${n ? v.erledigt / n : 0}"><span>${v.erledigt}<small>/${n}</small></span></div>
       </div>
-      <div class="chips">
-        <button class="chip ${ui.filter === 'alle' ? 'an' : ''}" data-filter="alle">Alle <b>${n}</b></button>
-        <button class="chip ${ui.filter === 'offen' ? 'an' : ''}" data-filter="offen">Offen <b>${offen}</b></button>
-        <button class="chip ${ui.filter === 'erledigt' ? 'an' : ''}" data-filter="erledigt">Gestempelt <b>${v.erledigt}</b></button>
-        <button class="chip ${ui.filter === 'naehe' ? 'an' : ''}" data-filter="naehe">📍 In der Nähe</button>
-      </div>
+      ${segmente(v)}
     </div>
     <div class="scroll">
+      ${v.meta ? kacheln() : ''}
       ${karten}${leer}
-      ${v.meta ? `<button class="hinzu" data-aktion="hinzu"><span style="font-size:20px">＋</span> Ort hinzufügen</button>` : ''}
-      ${n ? '<p class="lang-tipp">Tipp: Lange auf einen Ort drücken zum Löschen oder Bearbeiten</p>' : ''}
+      ${n ? '<p class="lang-tipp">Lange auf einen Ort drücken zum Löschen oder Bearbeiten</p>' : ''}
     </div>`;
   const s = box.querySelector('.scroll');
   if (s) s.scrollTop = merk;
@@ -468,38 +586,33 @@ function sheetZeichnen(v) {
 function detailZeichnen(v, o, box) {
   const d = entfernung(o);
   const wer = o.check ? name(v, o.check.by) : '';
-  const fakten = [
-    `<span class="fakt">${kat(o.k).emoji} ${esc(kat(o.k).name)}</span>`,
-    d != null ? `<span class="fakt">📍 ${meter(d)} entfernt</span>` : '',
-    o.lat == null ? `<span class="fakt">Ohne festen Ort</span>` : '',
-  ].join('');
+  const ringText = `${v.meta ? v.meta.n : 'Stempelpass'} • Nr ${String(o.nr).padStart(2, '0')} • ${o.n.slice(0, 22)}`;
   box.innerHTML = `
     <div class="griff-zone">
       <div class="griff"></div>
       <div class="detail-oben">
-        <button class="textknopf" data-aktion="liste">‹ Alle Orte</button>
-        <button class="textknopf" data-aktion="bearbeiten">Bearbeiten</button>
+        <button class="kreisknopf" data-aktion="liste" aria-label="Zurück">${icon('zurueck', 20, 2.2)}</button>
+        <div class="mitte">${esc(kat(o.k).name)} · Nr. ${o.nr}</div>
+        <button class="kreisknopf" data-aktion="menue" aria-label="Mehr">${icon('mehr', 20, 2.4)}</button>
       </div>
     </div>
-    <div class="scroll ${o.check ? 'erledigt-detail' : ''}">
-      <div class="held">
-        <div class="held-emo">${kat(o.k).emoji}</div>
-        <div><div class="eyebrow">Nr. ${o.nr} von ${v.orte.length}</div><h2>${esc(o.n)}</h2></div>
+    <div class="scroll">
+      <div class="scheibe-box">
+        ${scheibe({ text: ringText, inhalt: o.check ? icon('haken', 40, 2.6) : katIcon(o.k, 40), klasse: o.check ? 'gestempelt' : '', attr: `data-stempel="${esc(o.id)}" aria-label="${o.check ? 'Stempel entfernen' : 'Abstempeln'}"` })}
+        <div class="scheibe-hinweis">${o.check ? `Gestempelt von ${esc(wer)} · ${esc(wann(o.check.at))}` : 'Auf die Scheibe tippen zum Abstempeln'}</div>
       </div>
-      ${o.notiz ? `<p class="notiz">${esc(o.notiz)}</p>` : ''}
-      <div class="fakten">${fakten}</div>
-      <button class="gross-stempel ${o.check ? 'gestempelt' : ''}" data-stempel="${esc(o.id)}">
-        <span class="stempel">${stempelSvg()}</span>
-        <span>${o.check
-          ? `<strong>Gestempelt!</strong><small>von ${esc(wer)} · ${esc(wann(o.check.at))} – tippen zum Entfernen</small>`
-          : `<strong>Abstempeln</strong><small>Hier gewesen? Dann drauf tippen.</small>`}</span>
-      </button>
-      ${o.lat != null ? `<div class="zeile">
-        <a class="knopf" href="${routeLink(o)}" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg> Route
-        </a>
-        <button class="knopf leise" data-aktion="zentrieren">Auf Karte zeigen</button>
+      <h2 class="detail-name">${esc(o.n)}</h2>
+      <div class="chips-zeile">
+        <span class="chip-klein">${katIcon(o.k, 14)}${esc(kat(o.k).name)}</span>
+        ${d != null ? `<span class="chip-klein">${icon('navi', 14)}${meter(d)}</span>` : ''}
+        ${o.lat == null ? '<span class="chip-klein">Ohne festen Ort</span>' : ''}
+        ${o.check ? `<span class="chip-klein orange">${icon('haken', 14, 2.6)}Erledigt</span>` : ''}
+      </div>
+      ${o.lat != null ? `<div class="zeile" style="margin-bottom:10px">
+        <a class="knopf orange" href="${routeLink(o)}" target="_blank" rel="noopener">${icon('navi', 19)} Route</a>
+        <button class="knopf" data-aktion="zentrieren">${icon('karte', 19)} Karte</button>
       </div>` : ''}
+      ${o.notiz ? `<div class="karte-box"><div class="eyebrow">Notiz</div><p class="notiz">${esc(o.notiz)}</p></div>` : ''}
     </div>`;
 }
 
@@ -525,46 +638,101 @@ function zurListe() {
   allesZeichnen();
 }
 
-function stempeln(id, knopf) {
+// ---------- Abstempeln ----------
+function stempeln(id) {
   const v = ansicht(aktuell);
   const o = v.orte.find((x) => x.id === id);
   if (!o) return;
   if (o.check) {
     const alt = o.check;
     schreiben(aktuell, 'c:' + id, { ok: false, by: ich.id, at: Date.now() });
-    toast(`Stempel bei „${o.n}“ entfernt`, 'Rückgängig', () => schreiben(aktuell, 'c:' + id, alt));
+    sound.weg(); haptik('weg');
+    toast(`Stempel bei „${o.n}“ entfernt`, 'Rückgängig', () => { schreiben(aktuell, 'c:' + id, alt); sound.zurueck(); haptik('leicht'); }, 4500);
     return;
   }
+  const vorher = v.erledigt;
   schreiben(aktuell, 'c:' + id, { ok: true, by: ich.id, at: Date.now() });
-  if (navigator.vibrate) navigator.vibrate([12, 40, 24]);
-  // Nach dem Neuzeichnen die Stempel-Animation auf dem frischen Element abspielen
+  sound.stempel(); haptik('stempel');
+  // Nach dem Neuzeichnen die Animation auf dem frischen Element abspielen
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    const neu = document.querySelector(`[data-stempel="${CSS.escape(id)}"]`);
-    if (!neu) return;
-    (neu.classList.contains('stempel') ? neu : neu.querySelector('.stempel')).classList.add('knall');
-    neu.closest('.ort')?.classList.add('wackeln');
+    document.querySelectorAll(`[data-stempel="${CSS.escape(id)}"]`).forEach((el) => {
+      el.classList.add('knall');
+      el.closest('.ort')?.classList.add('wackeln');
+    });
   }));
-  const nach = ansicht(aktuell);
-  if (nach.erledigt === nach.orte.length && nach.orte.length > 1) setTimeout(feiern, 450);
+  setTimeout(() => stempelErfolg(id, vorher), 480);
 }
 
-function feiern() {
+function stempelErfolg(id, vorher) {
+  const v = ansicht(aktuell);
+  const o = v.orte.find((x) => x.id === id);
+  if (!o) return;
+  const n = v.orte.length, e = v.erledigt;
+  const marke = [[1, 'Alles gestempelt!', 'pokal'], [0.75, 'Fast geschafft!', 'funken'], [0.5, 'Halbzeit!', 'funken'], [0.25, 'Guter Start!', 'funken']]
+    .find(([anteil]) => vorher / n < anteil && e / n >= anteil);
+  const fertig = e === n && n > 1;
+  // Vorschlag: nächster offener Ort in der Nähe
+  const von = o.lat != null ? o : pos;
+  const offen = v.orte.filter((x) => !x.check && x.lat != null);
+  const naechster = von && offen.length ? offen.map((x) => [x, abstand(von, x)]).sort((a, b) => a[1] - b[1])[0] : null;
+  erfolg({
+    icon: marke ? marke[2] : 'haken',
+    titel: marke ? marke[1] : 'Gestempelt!',
+    text: fertig ? `Alle ${n} Orte von „${v.meta.n}“ – was für eine Reise!` : `${esc(o.n)} · ${e} von ${n} geschafft, noch ${n - e} offen.`,
+    fortschritt: { von: vorher / n, auf: e / n, links: `${e} gestempelt`, rechts: `${Math.round((e / n) * 100)} %` },
+    vorschlag: !fertig && naechster ? { o: naechster[0], weit: naechster[1] } : null,
+    knopf: 'Weiter',
+    feiern: !!marke,
+  });
+}
+
+function konfetti() {
   const box = $('#konfetti');
-  const zeichen = ['🎉', '✨', '🛕', '🥭', '🌺', '⭐', '🐘'];
-  box.innerHTML = Array.from({ length: 36 }, () => {
-    const x = Math.random() * 100, dx = (Math.random() - .5) * 200;
-    return `<span style="left:${x}vw;--x:${dx}px;--r:${Math.random() * 720 - 360}deg;--d:${2 + Math.random() * 1.8}s;animation-delay:${Math.random() * .6}s">${zeichen[Math.floor(Math.random() * zeichen.length)]}</span>`;
+  const farben = ['#ff5d1f', '#ff8a4c', '#ffffff', '#ffd2b8', '#3a3a40'];
+  box.innerHTML = Array.from({ length: 70 }, () => {
+    const x = Math.random() * 100, dx = (Math.random() - 0.5) * 240;
+    return `<span style="left:${x}vw;background:${farben[Math.floor(Math.random() * farben.length)]};--x:${dx}px;--r:${Math.random() * 900 - 450}deg;--d:${2.2 + Math.random() * 1.6}s;animation-delay:${Math.random() * 0.5}s"></span>`;
   }).join('');
-  toast('Alles gestempelt – was für eine Reise! 🎉', null, null, 4500);
   setTimeout(() => { box.innerHTML = ''; }, 4500);
+}
+
+// Erfolgs-Screen im Stil der Vorlage
+function erfolg({ icon: ic = 'haken', titel, text, fortschritt, vorschlag, knopf = 'Weiter', aktion, zweit, zweitAktion, feiern }) {
+  const alt = $('#erfolg'); if (alt) alt.remove();
+  const el = document.createElement('div');
+  el.className = 'erfolg'; el.id = 'erfolg';
+  el.innerHTML = `
+    <div class="erfolg-hg"></div>
+    <div class="erfolg-karte" role="dialog" aria-modal="true">
+      <div class="erfolg-ico">${icon(ic, 44, 2.4)}</div>
+      <h2>${esc(titel)}</h2>
+      <p class="unter">${text}</p>
+      ${fortschritt ? `<div class="erfolg-balken" style="--von:${fortschritt.von};--auf:${fortschritt.auf}"><i></i></div>
+        <div class="erfolg-zahlen"><span>${esc(fortschritt.links)}</span><span>${esc(fortschritt.rechts)}</span></div>` : ''}
+      ${vorschlag ? `<button class="vorschlag" data-naechster="${esc(vorschlag.o.id)}" style="width:100%">
+        <div class="eyebrow">Als Nächstes in der Nähe</div>
+        <div class="vorschlag-zeile"><span class="t-ico">${katIcon(vorschlag.o.k, 20)}</span>
+          <span style="flex:1;min-width:0"><b>${esc(vorschlag.o.n)}</b><small>${meter(vorschlag.weit)} entfernt</small></span>${pfeilRechts()}</div>
+      </button>` : ''}
+      <button class="knopf orange voll mit-ico" data-weiter><span class="ico-kreis">${icon(ic === 'pokal' ? 'pokal' : 'haken', 20, 2.4)}</span>${esc(knopf)}<span class="pfeil-rechts">${pfeilRechts()}</span></button>
+      ${zweit ? `<button class="knopf leise voll" data-zweit style="margin-top:8px">${esc(zweit)}</button>` : ''}
+    </div>`;
+  document.body.appendChild(el);
+  const zu = (fn) => { el.classList.add('weg'); setTimeout(() => el.remove(), 260); sound.tick(); if (fn) setTimeout(fn, 120); };
+  el.querySelector('[data-weiter]').onclick = () => zu(aktion);
+  el.querySelector('.erfolg-hg').onclick = () => zu();
+  const z = el.querySelector('[data-zweit]'); if (z) z.onclick = () => zu(zweitAktion);
+  const n = el.querySelector('[data-naechster]'); if (n) n.onclick = () => zu(() => detailOeffnen(n.dataset.naechster, true));
+  if (feiern) { setTimeout(() => { sound.erfolg(); haptik('erfolg'); konfetti(); }, 150); }
 }
 
 // Klicks im Sheet
 sheet.addEventListener('click', (e) => {
   const st = e.target.closest('[data-stempel]');
-  if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel, st); }
+  if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel); }
   const f = e.target.closest('[data-filter]');
   if (f) {
+    if (ui.filter !== f.dataset.filter) { sound.tick(); haptik('leicht'); }
     ui.filter = f.dataset.filter;
     if (ui.filter === 'naehe' && !pos) ortungStarten(false);
     return allesZeichnen();
@@ -572,14 +740,18 @@ sheet.addEventListener('click', (e) => {
   const a = e.target.closest('[data-aktion]');
   if (a) {
     const was = a.dataset.aktion;
+    sound.tick();
     if (was === 'liste') return zurListe();
     if (was === 'hinzu') return hinzufuegenDialog();
-    if (was === 'bearbeiten') { const v = ansicht(aktuell); const o = v.orte.find((x) => x.id === ui.ortId); return o && ortEditor(o); }
+    if (was === 'einladen') return einladenDialog();
+    if (was === 'offline') return offlineKarte ? syncDialog() : karteHerunterladen();
+    if (was === 'alle') { if (ui.snap === 'voll') sheetSetzen('mitte', false); return allesZeigen(); }
+    if (was === 'menue') return ortMenue(ui.ortId);
     if (was === 'zentrieren') { const v = ansicht(aktuell); const o = v.orte.find((x) => x.id === ui.ortId); if (o) { if (ui.snap === 'voll') sheetSetzen('mitte', false); map.flyTo({ center: [o.lng, o.lat], zoom: 16, padding: polster(), duration: 900 }); } return; }
     return;
   }
   const karte = e.target.closest('.ort');
-  if (karte) detailOeffnen(karte.dataset.id);
+  if (karte) { sound.tick(); detailOeffnen(karte.dataset.id); }
 });
 
 // ---------- Modal ----------
@@ -588,8 +760,10 @@ function modal(html, nachher) {
   const m = $('#modal');
   const k = $('#modalKarte');
   m.classList.remove('weg');
-  k.innerHTML = `<button class="modal-zu" data-zu aria-label="Schließen">✕</button>` + html;
+  k.innerHTML = `<button class="modal-zu" data-zu aria-label="Schließen">${icon('x', 18, 2.2)}</button>` + html;
+  if (m.hidden) sound.auf();
   m.hidden = false;
+  k.scrollTop = 0;
   modalZu = null;
   if (nachher) nachher(k);
   return k;
@@ -598,7 +772,7 @@ function modalSchliessen() {
   const m = $('#modal');
   if (m.hidden) return;
   m.classList.add('weg');
-  setTimeout(() => { m.hidden = true; m.classList.remove('weg'); $('#modalKarte').innerHTML = ''; }, 230);
+  setTimeout(() => { m.hidden = true; m.classList.remove('weg'); $('#modalKarte').innerHTML = ''; }, 240);
   if (modalZu) { const f = modalZu; modalZu = null; f(); }
 }
 $('#modal').addEventListener('click', (e) => { if (e.target.closest('[data-zu]') && !$('#modalKarte').dataset.pflicht) modalSchliessen(); });
@@ -621,12 +795,12 @@ async function tripAnlegen(nameText, emoji, vorlage) {
   ui.ansicht = 'liste'; ui.filter = 'alle';
   allesZeichnen();
   setTimeout(() => allesZeigen(), 50);
-  kartenChip();
   return id;
 }
 
 async function tripBeitreten(code) {
   const id = await tripLaden(code);
+  const neu = !trips.get(id).data.records.meta;
   aktuell = id;
   tripListeSpeichern();
   sync.watch(id, trips.get(id).keys);
@@ -634,13 +808,26 @@ async function tripBeitreten(code) {
   speichern(id, true);
   ui.ansicht = 'liste'; ui.filter = 'alle';
   allesZeichnen();
-  // Sobald Orte da sind, Karte darauf ausrichten
+  // Sobald Orte da sind: Karte ausrichten und begrüßen
   let n = 0;
   const warten = setInterval(() => {
     const v = ansicht(id);
-    if ((v && v.orte.length) || ++n > 40) { clearInterval(warten); if (v && v.orte.length) allesZeigen(); }
+    if ((v && v.meta && v.orte.length) || ++n > 60) {
+      clearInterval(warten);
+      if (!v || !v.orte.length) return;
+      allesZeigen();
+      if (neu) {
+        sound.erfolg(); haptik('erfolg');
+        erfolg({
+          icon: 'leute', titel: 'Willkommen im Trip!',
+          text: `„${esc(v.meta.n)}“ · ${v.orte.length} Orte · dabei: ${esc(v.leute.map((l) => l.n).join(', '))}`,
+          knopf: offlineKarte ? 'Los geht’s' : `Karte offline speichern · ${REGION.mb} MB`,
+          aktion: offlineKarte ? null : karteHerunterladen,
+          zweit: offlineKarte ? null : 'Später',
+        });
+      }
+    }
   }, 500);
-  kartenChip();
   return id;
 }
 
@@ -672,26 +859,26 @@ function tripEntfernen(id) {
 function willkommen(einladung) {
   const k = modal(`
     <div class="willkommen">
-      <img class="willkommen-logo" src="icons/icon-192.png" alt="">
+      ${scheibe({ text: 'Stempelpass • Reisen • Abstempeln', inhalt: icon('haken', 30, 2.6), klasse: 'logo-scheibe gestempelt', attr: 'tabindex="-1" aria-hidden="true"' })}
       <h2>${einladung ? 'Du bist eingeladen!' : 'Stempelpass'}</h2>
       <p class="lead">${einladung ? 'Tritt dem Trip bei – dann seht ihr alle dieselbe Karte und dieselben Stempel.' : 'Eure Reiseziele auf einer Karte. Gemeinsam abstempeln – auch offline.'}</p>
       <label class="feld"><span>Wie heißt du?</span><input class="eingabe" id="wName" autocomplete="given-name" placeholder="z. B. Mama, Papa, Adam" value="${esc(ich.name)}"></label>
       ${einladung ? `
-        <button class="knopf voll safran" id="wBeitreten">Trip beitreten</button>
+        <button class="knopf voll orange" id="wBeitreten">Trip beitreten</button>
       ` : `
-        <button class="knopf voll safran" id="wBangkok">🇹🇭 Bangkok-Trip anlegen</button>
-        <p class="klein" style="text-align:center;margin:6px 0 0">Mit allen 19 Zielen von eurem Zettel und eurem Hotel</p>
+        <button class="knopf voll orange mit-ico" id="wBangkok"><span class="ico-kreis" style="font-size:19px">🇹🇭</span>Bangkok-Trip anlegen<span class="pfeil-rechts">${pfeilRechts()}</span></button>
+        <p class="klein" style="margin:8px 0 0">Mit allen 19 Zielen von eurem Zettel und eurem Hotel</p>
         <div class="oder">oder</div>
-        <button class="knopf voll" id="wCode">Ich habe einen Einladungscode</button>
-        <button class="knopf voll leise" id="wLeer" style="margin-top:8px">Leeren Trip anlegen</button>
-        ${istIOS && !istApp ? `<div class="ios-hinweis"><b>Tipp fürs iPhone:</b> Tippe unten auf <b>Teilen</b> ⎙ und dann <b>„Zum Home-Bildschirm“</b>. Danach die App vom Home-Bildschirm öffnen und dort den Code eingeben.</div>` : ''}
+        <button class="knopf voll" id="wCode">${icon('code', 20)} Ich habe einen Einladungscode</button>
+        <button class="knopf voll leise" id="wLeer" style="margin-top:8px">${icon('plus', 20)} Leeren Trip anlegen</button>
+        ${istIOS && !istApp ? `<div class="ios-hinweis"><b>Tipp fürs iPhone:</b> Unten auf <b>Teilen</b> und dann <b>„Zum Home-Bildschirm“</b>. Danach die App vom Home-Bildschirm öffnen und dort den Code eingeben.</div>` : ''}
       `}
     </div>`);
   k.dataset.pflicht = '1';
   k.querySelector('.modal-zu').hidden = true;
   const nameNehmen = () => {
     const n = k.querySelector('#wName').value.trim();
-    if (!n) { k.querySelector('#wName').focus(); toast('Bitte gib deinen Namen ein'); return false; }
+    if (!n) { k.querySelector('#wName').focus(); toast('Bitte gib deinen Namen ein'); haptik('weg'); return false; }
     ich.name = n.slice(0, 24); LS.set('sp.ich', ich);
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     return true;
@@ -700,7 +887,19 @@ function willkommen(einladung) {
   if (einladung) {
     k.querySelector('#wBeitreten').onclick = async () => { if (!nameNehmen()) return; fertig(); await tripBeitreten(einladung); toast('Beigetreten – lade Orte …'); };
   } else {
-    k.querySelector('#wBangkok').onclick = async () => { if (!nameNehmen()) return; fertig(); await tripAnlegen(BANGKOK.name, BANGKOK.emoji, BANGKOK); setTimeout(() => einladenDialog(true), 1300); };
+    k.querySelector('#wBangkok').onclick = async () => {
+      if (!nameNehmen()) return;
+      fertig();
+      await tripAnlegen(BANGKOK.name, BANGKOK.emoji, BANGKOK);
+      setTimeout(() => {
+        sound.erfolg(); haptik('erfolg');
+        erfolg({
+          icon: 'funken', titel: 'Euer Trip ist bereit',
+          text: `${BANGKOK.orte.length} Orte stehen auf der Karte. Hol jetzt die Familie dazu – dann seht ihr alle dieselben Stempel.`,
+          knopf: 'Familie einladen', aktion: () => einladenDialog(), zweit: 'Später',
+        });
+      }, 700);
+    };
     k.querySelector('#wCode').onclick = () => { if (!nameNehmen()) return; fertig(); codeDialog(); };
     k.querySelector('#wLeer').onclick = () => { if (!nameNehmen()) return; fertig(); neuerTripDialog(); };
   }
@@ -709,17 +908,17 @@ function willkommen(einladung) {
 function codeDialog() {
   const k = modal(`
     <h2>Mit Code beitreten</h2>
-    <p class="lead">Den Code bekommst du von jemandem, der den Trip schon hat (Menü → Einladen).</p>
+    <p class="lead">Den Code bekommst du von jemandem, der den Trip schon hat (Einladen).</p>
     <label class="feld"><input class="eingabe code-eingabe" id="cCode" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="16"></label>
     <div class="knopf-reihe">
-      <button class="knopf voll safran" id="cOk">Beitreten</button>
-      ${navigator.clipboard && navigator.clipboard.readText ? '<button class="knopf voll leise" id="cEinf">Aus Zwischenablage einfügen</button>' : ''}
+      <button class="knopf voll orange" id="cOk">Beitreten</button>
+      ${navigator.clipboard && navigator.clipboard.readText ? `<button class="knopf voll leise" id="cEinf">${icon('kopie', 19)} Aus Zwischenablage einfügen</button>` : ''}
     </div>`);
   if (!aktuell) modalZu = () => setTimeout(() => !aktuell && willkommen(), 260);
   const feld = k.querySelector('#cCode');
   const los = async () => {
     const c = normCode(feld.value);
-    if (!c) return toast('Der Code hat 12 Zeichen, z. B. AB3D-EF7H-JK9M');
+    if (!c) { haptik('weg'); return toast('Der Code hat 12 Zeichen, z. B. AB3D-EF7H-JK9M'); }
     const vorher = trips.size;
     modalZu = null;
     modalSchliessen();
@@ -748,12 +947,12 @@ function neuerTripDialog() {
     <p class="lead">Danach Orte hinzufügen – einzeln suchen, auf der Karte setzen oder eine ganze Liste einfügen.</p>
     <label class="feld"><span>Name</span><input class="eingabe" id="nName" placeholder="z. B. Japan 2027"></label>
     <label class="feld"><span>Symbol</span></label>
-    <div class="kat-wahl" id="nEmo">${emojis.map((e, i) => `<button data-e="${e}" class="${i ? '' : 'an'}" style="font-size:20px">${e}</button>`).join('')}</div>
-    <div class="knopf-reihe"><button class="knopf voll safran" id="nOk">Trip anlegen</button></div>`);
+    <div class="kat-wahl" id="nEmo">${emojis.map((e, i) => `<button data-e="${e}" class="${i ? '' : 'an'}" style="font-size:20px;padding:0 10px">${e}</button>`).join('')}</div>
+    <div class="knopf-reihe"><button class="knopf voll orange" id="nOk">Trip anlegen</button></div>`);
   if (!aktuell) modalZu = () => setTimeout(() => !aktuell && willkommen(), 260);
   k.querySelector('#nEmo').onclick = (e) => {
     const b = e.target.closest('[data-e]'); if (!b) return;
-    wahl = b.dataset.e;
+    wahl = b.dataset.e; sound.tick();
     k.querySelectorAll('#nEmo button').forEach((x) => x.classList.toggle('an', x === b));
   };
   k.querySelector('#nOk').onclick = async () => {
@@ -762,6 +961,7 @@ function neuerTripDialog() {
     modalZu = null;
     modalSchliessen();
     await tripAnlegen(n.slice(0, 40), wahl);
+    sound.plopp();
     setTimeout(() => hinzufuegenDialog('liste'), 400);
   };
   setTimeout(() => k.querySelector('#nName').focus(), 350);
@@ -774,28 +974,30 @@ function tripMenue() {
     return `<li class="${id === aktuell ? 'an' : ''}">
       <button class="wahl" data-wahl="${id}"><span class="t-emo">${esc(v.meta ? v.meta.e : '⏳')}</span>
         <span style="min-width:0"><b>${esc(n)}</b><small>${v.erledigt} von ${v.orte.length} gestempelt</small></span></button>
-      <button class="weg" data-weg="${id}" aria-label="Vom Handy entfernen">🗑</button>
+      <button class="weg" data-weg="${id}" aria-label="Vom Handy entfernen">${icon('muell', 19)}</button>
     </li>`;
   }).join('');
   const k = modal(`
     <h2>Deine Trips</h2>
     <p class="lead">Trips bleiben auf diesem Handy gespeichert, bis du sie hier entfernst.</p>
     <ul class="trip-liste">${zeilen}</ul>
-    <div class="knopf-reihe">
-      <button class="knopf voll safran" id="mEinladen">Familie einladen</button>
-      <button class="knopf voll" id="mNeu">＋ Neuer Trip</button>
-      <button class="knopf voll leise" id="mCode">Mit Code beitreten</button>
-      <button class="knopf voll leise" id="mName">Name ändern (${esc(ich.name || '–')})</button>
-      ${installEvent ? '<button class="knopf voll leise" id="mInstall">Als App installieren</button>' : ''}
+    <button class="knopf voll orange" id="mEinladen">${icon('leute', 20)} Familie einladen</button>
+    <div class="liste-knoepfe">
+      <button id="mNeu">${icon('plus', 20)} Neuer Trip</button>
+      <button id="mCode">${icon('code', 20)} Mit Code beitreten</button>
+      <button id="mName">${icon('person', 20)} Dein Name<span class="wert">${esc(ich.name || '–')}</span></button>
+      <button id="mTon">${icon(tonAn() ? 'ton' : 'tonAus', 20)} Töne<span class="wert">${tonAn() ? 'An' : 'Aus'}</span></button>
+      <button id="mSync">${icon('sync', 20)} Sync & Offline-Karte<span class="wert">${offlineKarte ? 'Offline ✓' : 'nur online'}</span></button>
+      ${installEvent ? `<button id="mInstall">${icon('wolke', 20)} Als App installieren</button>` : ''}
     </div>`);
   k.onclick = (e) => {
     const w = e.target.closest('[data-wahl]');
-    if (w) { modalSchliessen(); tripWechseln(w.dataset.wahl); return; }
+    if (w) { sound.tick(); modalSchliessen(); tripWechseln(w.dataset.wahl); return; }
     const weg = e.target.closest('[data-weg]');
     if (weg) {
       const v = ansicht(weg.dataset.weg);
       if (confirm(`„${v.meta ? v.meta.n : 'Trip'}“ von diesem Handy entfernen?\n\nBei den anderen bleibt er erhalten. Mit dem Code kannst du jederzeit wieder beitreten.`)) {
-        modalSchliessen();
+        sound.weg(); modalSchliessen();
         tripEntfernen(weg.dataset.weg);
       }
     }
@@ -804,6 +1006,13 @@ function tripMenue() {
   k.querySelector('#mNeu').onclick = () => neuerTripDialog();
   k.querySelector('#mCode').onclick = () => codeDialog();
   k.querySelector('#mName').onclick = () => nameDialog();
+  k.querySelector('#mSync').onclick = () => syncDialog();
+  k.querySelector('#mTon').onclick = (e) => {
+    tonSetzen(!tonAn());
+    const b = e.currentTarget;
+    b.innerHTML = `${icon(tonAn() ? 'ton' : 'tonAus', 20)} Töne<span class="wert">${tonAn() ? 'An' : 'Aus'}</span>`;
+    sound.tick(); haptik('leicht');
+  };
   const inst = k.querySelector('#mInstall');
   if (inst) inst.onclick = async () => { modalSchliessen(); installEvent.prompt(); installEvent = null; };
 }
@@ -813,19 +1022,20 @@ function nameDialog() {
     <h2>Dein Name</h2>
     <p class="lead">So sehen die anderen, wer etwas abgestempelt hat.</p>
     <label class="feld"><input class="eingabe" id="dName" value="${esc(ich.name)}"></label>
-    <button class="knopf voll safran" id="dOk">Speichern</button>`);
+    <button class="knopf voll orange" id="dOk">Speichern</button>`);
   k.querySelector('#dOk').onclick = () => {
     const n = k.querySelector('#dName').value.trim();
     if (!n) return;
     ich.name = n.slice(0, 24); LS.set('sp.ich', ich);
     trips.forEach((_, id) => mitgliedEintragen(id));
+    sound.plopp();
     modalSchliessen();
   };
 }
 
 function einladeLink(code) { return abs('./') + '#code=' + code; }
 
-function einladenDialog(nachAnlegen) {
+function einladenDialog() {
   const t = trips.get(aktuell);
   if (!t) return;
   const v = ansicht(aktuell);
@@ -833,21 +1043,21 @@ function einladenDialog(nachAnlegen) {
   let qrSvg = '';
   try { const q = window.qrcode(0, 'M'); q.addData(link); q.make(); qrSvg = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); } catch {}
   const k = modal(`
-    <h2>${nachAnlegen ? 'Trip angelegt! Jetzt die Familie dazuholen' : 'Familie einladen'}</h2>
+    <h2>Familie einladen</h2>
     <p class="lead">Scannen, Link schicken oder Code abtippen. Wer dabei ist, sieht alle Orte und Stempel live.</p>
     <div class="qr">${qrSvg}</div>
     <div class="code-gross">${esc(t.code)}</div>
     <p class="klein" style="text-align:center;margin:0">Code für „${esc(v.meta ? v.meta.n : 'Trip')}“</p>
     <div class="knopf-reihe">
-      ${navigator.share ? '<button class="knopf voll safran" id="eTeilen">Link senden (WhatsApp …)</button>' : ''}
-      <button class="knopf voll ${navigator.share ? 'leise' : 'safran'}" id="eKopie">Link kopieren</button>
+      ${navigator.share ? `<button class="knopf voll orange" id="eTeilen">${icon('teilen', 20)} Link senden (WhatsApp …)</button>` : ''}
+      <button class="knopf voll ${navigator.share ? 'leise' : 'orange'}" id="eKopie">${icon('kopie', 20)} Link kopieren</button>
     </div>
     <p class="klein" style="margin-top:14px">Am iPhone: Link in Safari öffnen, „Zum Home-Bildschirm“ wählen und in der App „Mit Code beitreten“ – der Code steht auch in der Nachricht. Wer den Code hat, kann mitplanen und abstempeln.</p>`);
   const text = `Komm in unseren Trip „${v.meta ? v.meta.n : ''}“ im Stempelpass! 🗺️\n${link}\n\nCode: ${t.code}`;
   const te = k.querySelector('#eTeilen');
   if (te) te.onclick = async () => { try { await navigator.share({ title: 'Stempelpass', text }); } catch {} };
   k.querySelector('#eKopie').onclick = async () => {
-    try { await navigator.clipboard.writeText(text); toast('Kopiert – jetzt in WhatsApp einfügen'); } catch { toast('Kopieren nicht möglich'); }
+    try { await navigator.clipboard.writeText(text); sound.plopp(); haptik('leicht'); toast('Kopiert – jetzt in WhatsApp einfügen'); } catch { toast('Kopieren nicht möglich'); }
   };
 }
 
@@ -862,7 +1072,7 @@ function syncDialog() {
     <div class="info-zeile"><span>Offline-Karte Bangkok</span><span>${offlineKarte ? 'gespeichert ✓' : 'nicht gespeichert'}</span></div>
     <div class="info-zeile"><span>Dabei</span><span>${mitglieder || '–'}</span></div>
     <p class="klein" style="margin-top:14px">Eure Daten liegen Ende-zu-Ende-verschlüsselt auf mehreren öffentlichen Nostr-Relays. Ohne den Trip-Code kann niemand sie lesen.</p>
-    ${offlineKarte ? '' : '<div class="knopf-reihe"><button class="knopf voll safran" id="sKarte">Offline-Karte jetzt laden (64 MB)</button></div>'}`,
+    ${offlineKarte ? '' : `<div class="knopf-reihe"><button class="knopf voll orange" id="sKarte">${icon('wolke', 20)} Offline-Karte laden (${REGION.mb} MB)</button></div>`}`,
   (k) => { const b = k.querySelector('#sKarte'); if (b) b.onclick = () => { modalSchliessen(); karteHerunterladen(); }; });
 }
 
@@ -947,17 +1157,15 @@ function naechsteOrdnung() {
 }
 
 function hinzufuegenDialog(tab = 'suchen') {
+  const tabs = [['suchen', 'Suchen'], ['liste', 'Liste'], ['karte', 'Karte'], ['ohne', 'Ohne Ort']];
   const k = modal(`
     <h2>Ort hinzufügen</h2>
-    <div class="tabs" id="hTabs">
-      <button data-tab="suchen">Suchen</button>
-      <button data-tab="liste">Liste</button>
-      <button data-tab="karte">Karte / Link</button>
-      <button data-tab="ohne">Ohne Ort</button>
-    </div>
+    <div class="segmente" id="hTabs" style="--n:4"><span class="schieber"></span>${tabs.map(([id, t]) => `<button data-tab="${id}">${t}</button>`).join('')}</div>
     <div id="hInhalt"></div>`);
   const inhalt = k.querySelector('#hInhalt');
   const zeigen = (t) => {
+    const i = tabs.findIndex((x) => x[0] === t);
+    k.querySelector('#hTabs').style.setProperty('--i', i);
     k.querySelectorAll('#hTabs button').forEach((b) => b.classList.toggle('an', b.dataset.tab === t));
     if (t === 'suchen') {
       inhalt.innerHTML = `
@@ -975,7 +1183,7 @@ function hinzufuegenDialog(tab = 'suchen') {
           treffer = await suchen(q);
           if (meine !== nr) return;
           inhalt.querySelector('#hInfo').textContent = treffer.length ? '' : 'Nichts gefunden. Anders schreiben oder auf der Karte setzen.';
-          inhalt.querySelector('#hTreffer').innerHTML = treffer.map((r, i) => `<li><button data-i="${i}"><span class="t-emo">${kat(r.k).emoji}</span><span style="min-width:0"><b>${esc(r.n)}</b><small>${esc(r.ort)}</small></span></button></li>`).join('');
+          inhalt.querySelector('#hTreffer').innerHTML = treffer.map((r, i) => `<li><button data-i="${i}"><span class="t-ico">${katIcon(r.k, 20)}</span><span style="min-width:0"><b>${esc(r.n)}</b><small>${esc(r.ort)}</small></span></button></li>`).join('');
         } catch { inhalt.querySelector('#hInfo').textContent = navigator.onLine ? 'Suche gerade nicht erreichbar.' : 'Offline – Suche geht nur mit Internet. Du kannst den Ort aber auf der Karte setzen.'; }
       };
       feld.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(los, 650); });
@@ -983,6 +1191,7 @@ function hinzufuegenDialog(tab = 'suchen') {
       inhalt.querySelector('#hTreffer').onclick = (e) => {
         const b = e.target.closest('[data-i]'); if (!b) return;
         const r = treffer[+b.dataset.i];
+        sound.tick();
         ortEditor({ n: r.n, k: r.k, lat: r.lat, lng: r.lng });
       };
       setTimeout(() => feld.focus(), 350);
@@ -991,7 +1200,7 @@ function hinzufuegenDialog(tab = 'suchen') {
         <p class="klein" style="margin-top:0">Eine Zeile pro Ort – wie auf eurem Zettel. Jeder Ort wird automatisch gesucht und auf die Karte gesetzt. Was nicht gefunden wird, kommt „ohne Ort“ in die Liste.</p>
         <textarea class="eingabe" id="lText" rows="7" placeholder="Wat Arun&#10;Grand Palace&#10;Lumpini Park"></textarea>
         <label class="feld" style="margin-top:10px"><span>Stadt / Land (hilft beim Finden)</span><input class="eingabe" id="lStadt" placeholder="z. B. Bangkok"></label>
-        <button class="knopf voll safran" id="lOk">Alle hinzufügen</button>
+        <button class="knopf voll orange" id="lOk">Alle hinzufügen</button>
         <div class="protokoll" id="lLog"></div>`;
       inhalt.querySelector('#lOk').onclick = async (e) => {
         const zeilen = inhalt.querySelector('#lText').value.split('\n').map((s) => s.replace(/^[\s•·\-*o]+/, '').trim()).filter(Boolean);
@@ -1004,9 +1213,10 @@ function hinzufuegenDialog(tab = 'suchen') {
           let r = null;
           try { [r] = await suchen(stadt ? `${z}, ${stadt}` : z, true); } catch {}
           schreiben(aktuell, 'p:' + zufall(8), r ? { n: z, k: r.k, lat: r.lat, lng: r.lng, o: o++ } : { n: z, k: 'sonst', lat: null, lng: null, o: o++ });
-          log.insertAdjacentHTML('beforeend', `<div>${r ? '✅' : '➖'} ${esc(z)}${r ? '' : ' <span class="klein">– ohne Ort, später bearbeiten</span>'}</div>`);
+          if (r) sound.plopp(); else sound.tick();
+          log.insertAdjacentHTML('beforeend', `<div>${r ? '✓' : '–'} ${esc(z)}${r ? '' : ' <span class="klein">– ohne Ort, später bearbeiten</span>'}</div>`);
           log.scrollTop = log.scrollHeight;
-          await new Promise((res) => setTimeout(res, 1100)); // Nominatim: höchstens 1 Anfrage pro Sekunde
+          await new Promise((res) => setTimeout(res, 1100)); // Suchdienste schonen
         }
         e.target.disabled = false;
         e.target.textContent = 'Fertig – schließen';
@@ -1014,9 +1224,9 @@ function hinzufuegenDialog(tab = 'suchen') {
       };
     } else if (t === 'karte') {
       inhalt.innerHTML = `
-        <button class="knopf voll safran" id="kSetzen">📍 Punkt auf der Karte setzen</button>
+        <button class="knopf voll orange" id="kSetzen">${icon('sonst', 20)} Punkt auf der Karte setzen</button>
         <p class="klein">Tipp: Du kannst auch einfach lange auf die Karte drücken.</p>
-        <label class="feld" style="margin-top:16px"><span>Oder Google-Maps-Link / Koordinaten einfügen</span><input class="eingabe" id="kLink" placeholder="https://www.google.com/maps/…@13.75,100.49 oder 13.75, 100.49"></label>
+        <label class="feld" style="margin-top:16px"><span>Google-Maps-Link oder Koordinaten</span><input class="eingabe" id="kLink" placeholder="https://www.google.com/maps/…@13.75,100.49"></label>
         <button class="knopf voll leise" id="kLinkOk">Übernehmen</button>
         <p class="klein">Kurze Links (maps.app.goo.gl) erst im Browser öffnen und dann die lange Adresse kopieren.</p>`;
       inhalt.querySelector('#kSetzen').onclick = () => { modalSchliessen(); auswahlStarten(); };
@@ -1027,12 +1237,11 @@ function hinzufuegenDialog(tab = 'suchen') {
         ortEditor({ ...p, n: nm ? decodeURIComponent(nm).replace(/\+/g, ' ') : '' });
       };
     } else {
-      inhalt.innerHTML = `
-        <p class="klein" style="margin-top:0">Für Dinge ohne festen Ort – z. B. „Massage“, „Food Tour“ oder „Mango Sticky Rice essen“.</p>`;
+      inhalt.innerHTML = `<p class="klein" style="margin-top:0">Für Dinge ohne festen Ort – z. B. „Massage“, „Food Tour“ oder „Mango Sticky Rice essen“.</p>`;
       ortEditor({ lat: null, lng: null }, inhalt);
     }
   };
-  k.querySelector('#hTabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) zeigen(b.dataset.tab); };
+  k.querySelector('#hTabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) { sound.tick(); zeigen(b.dataset.tab); } };
   zeigen(tab);
 }
 
@@ -1044,35 +1253,37 @@ function ortEditor(o, ziel) {
     ${ziel ? '' : `<h2>${neu ? 'Neuer Ort' : 'Ort bearbeiten'}</h2>`}
     <label class="feld"><span>Name</span><input class="eingabe" id="oName" value="${esc(o.n || '')}" placeholder="Wie heißt der Ort?"></label>
     <label class="feld"><span>Art</span></label>
-    <div class="kat-wahl" id="oKat">${Object.entries(KATEGORIEN).map(([k, c]) => `<button data-k="${k}" class="${k === katWahl ? 'an' : ''}">${c.emoji} ${esc(c.name)}</button>`).join('')}</div>
-    <label class="feld" style="margin-top:12px"><span>Notiz</span><textarea class="eingabe" id="oNotiz" rows="3" placeholder="Öffnungszeiten, Tipps, wann hin …">${esc(o.notiz || '')}</textarea></label>
-    ${o.lat != null ? `<p class="klein">📍 ${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}${neu ? '' : ' · <button class="textknopf" id="oVerschieben" style="height:30px">Position ändern</button>'}</p>` : ''}
+    <div class="kat-wahl" id="oKat">${Object.entries(KATEGORIEN).map(([k, c]) => `<button data-k="${k}" class="${k === katWahl ? 'an' : ''}">${icon(k, 17)}${esc(c.name)}</button>`).join('')}</div>
+    <label class="feld" style="margin-top:14px"><span>Notiz</span><textarea class="eingabe" id="oNotiz" rows="3" placeholder="Öffnungszeiten, Tipps, wann hin …">${esc(o.notiz || '')}</textarea></label>
+    ${o.lat != null ? `<p class="klein">${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}${neu ? '' : ' · <button class="chip-klein" id="oVerschieben">Position ändern</button>'}</p>` : ''}
     <div class="knopf-reihe">
-      <button class="knopf voll safran" id="oOk">${neu ? 'Hinzufügen' : 'Speichern'}</button>
-      ${neu ? '' : '<button class="knopf voll rot" id="oWeg">Ort löschen</button>'}
+      <button class="knopf voll orange" id="oOk">${neu ? 'Hinzufügen' : 'Speichern'}</button>
+      ${neu ? '' : `<button class="knopf voll rot" id="oWeg">${icon('muell', 19)} Ort löschen</button>`}
     </div>`;
   const k = ziel || modal(html);
   if (ziel) ziel.insertAdjacentHTML('beforeend', html);
   let vorschau = null;
   if (o.lat != null && neu && !ziel) {
-    const el = document.createElement('div'); el.className = 'neu-pin';
+    const el = document.createElement('div');
+    el.style.cssText = 'width:22px;height:22px;border-radius:50%;background:#ff5d1f;border:3px solid #fff;box-shadow:0 0 0 8px rgba(255,93,31,.25)';
     vorschau = new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(map);
     map.easeTo({ center: [o.lng, o.lat], zoom: Math.max(map.getZoom(), 14), duration: 600, padding: { top: 60, bottom: innerHeight * 0.55, left: 0, right: 0 } });
     modalZu = () => vorschau && vorschau.remove();
   }
   k.querySelector('#oKat').onclick = (e) => {
     const b = e.target.closest('[data-k]'); if (!b) return;
-    katWahl = b.dataset.k;
+    katWahl = b.dataset.k; sound.tick(); haptik('leicht');
     k.querySelectorAll('#oKat button').forEach((x) => x.classList.toggle('an', x === b));
   };
   k.querySelector('#oOk').onclick = () => {
     const n = k.querySelector('#oName').value.trim();
-    if (!n) return toast('Bitte einen Namen eingeben');
+    if (!n) { haptik('weg'); return toast('Bitte einen Namen eingeben'); }
     const id = o.id || zufall(8);
     const alt = o.id ? trips.get(aktuell).data.records['p:' + id].v : {};
     schreiben(aktuell, 'p:' + id, { ...alt, n: n.slice(0, 80), k: katWahl, notiz: k.querySelector('#oNotiz').value.trim().slice(0, 1000), lat: o.lat ?? null, lng: o.lng ?? null, o: o.id ? alt.o : naechsteOrdnung() });
     modalSchliessen();
     if (vorschau) vorschau.remove();
+    sound.plopp(); haptik('mittel');
     toast(neu ? `„${n}“ hinzugefügt` : 'Gespeichert');
     if (neu && o.lat != null) setTimeout(() => detailOeffnen(id), 250);
   };
@@ -1087,8 +1298,9 @@ function ortLoeschen(id) {
   const rec = trips.get(aktuell).data.records['p:' + id];
   if (!rec) return;
   schreiben(aktuell, 'p:' + id, { ...rec.v, weg: true });
+  sound.weg(); haptik('weg');
   if (ui.ortId === id) zurListe();
-  toast(`„${rec.v.n}“ gelöscht`, 'Rückgängig', () => schreiben(aktuell, 'p:' + id, { ...rec.v, weg: false }), 5000);
+  toast(`„${rec.v.n}“ gelöscht`, 'Rückgängig', () => { schreiben(aktuell, 'p:' + id, { ...rec.v, weg: false }); sound.zurueck(); haptik('leicht'); }, 5000);
 }
 
 // Menü nach langem Drücken auf einen Ort (Liste oder Pin)
@@ -1097,21 +1309,21 @@ function ortMenue(id) {
   const o = v && v.orte.find((x) => x.id === id);
   if (!o) return;
   const k = modal(`
-    <div class="held" style="margin-top:0">
-      <div class="held-emo">${kat(o.k).emoji}</div>
-      <div><div class="eyebrow">Nr. ${o.nr} · ${esc(kat(o.k).name)}</div><h2>${esc(o.n)}</h2></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:18px;padding-right:40px">
+      <div class="ort-ico" style="width:56px;height:56px;border-radius:18px">${katIcon(o.k, 26)}</div>
+      <div style="min-width:0"><div class="eyebrow">Nr. ${o.nr} · ${esc(kat(o.k).name)}</div><h2 style="margin:2px 0 0;padding:0">${esc(o.n)}</h2></div>
     </div>
-    <div class="knopf-reihe">
-      <button class="knopf voll rot" id="mLoeschen">🗑 Ort löschen</button>
-      <button class="knopf voll leise" id="mStempel">${o.check ? 'Stempel entfernen' : '✓ Abstempeln'}</button>
-      <button class="knopf voll leise" id="mBearbeiten">Bearbeiten</button>
+    <div class="knopf-reihe" style="margin-top:0">
+      <button class="knopf voll ${o.check ? 'leise' : 'orange'}" id="mStempel">${icon('haken', 20, 2.4)} ${o.check ? 'Stempel entfernen' : 'Abstempeln'}</button>
+      <button class="knopf voll" id="mBearbeiten">${icon('stift', 19)} Bearbeiten</button>
+      <button class="knopf voll rot" id="mLoeschen">${icon('muell', 19)} Ort löschen</button>
     </div>`);
   k.querySelector('#mLoeschen').onclick = () => { modalSchliessen(); ortLoeschen(id); };
   k.querySelector('#mStempel').onclick = () => { modalSchliessen(); stempeln(id); };
   k.querySelector('#mBearbeiten').onclick = () => ortEditor(o);
 }
 
-// Langes Drücken (Finger ~0,5 s) bzw. Rechtsklick auf Ortskarten und Pins
+// Langes Drücken (Finger ~0,5 s) bzw. Rechtsklick auf Ortskarten in der Liste
 let langGedrueckt = 0;
 function langDrueckbar(selektor, fn) {
   let timer = null, start = null, el = null;
@@ -1126,7 +1338,7 @@ function langDrueckbar(selektor, fn) {
       const id = el.dataset.id;
       ab();
       langGedrueckt = Date.now();
-      if (navigator.vibrate) navigator.vibrate(25);
+      haptik('mittel'); sound.tick();
       fn(id);
     }, 520);
   });
@@ -1143,7 +1355,7 @@ function langDrueckbar(selektor, fn) {
   // Den Klick nach dem Loslassen schlucken, sonst öffnet sich zusätzlich die Detailansicht
   document.addEventListener('click', (e) => { if (Date.now() - langGedrueckt < 800 && e.target.closest(selektor)) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
-langDrueckbar('.ort, .pin', ortMenue);
+langDrueckbar('.ort', ortMenue);
 
 // Punkt in der Kartenmitte wählen
 let auswahlAktiv = false;
@@ -1156,13 +1368,15 @@ function auswahlStarten(bestehend) {
   if (map) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
   if (bestehend && bestehend.lat != null) map.easeTo({ center: [bestehend.lng, bestehend.lat], zoom: 16 });
   const ende = () => { auswahlAktiv = false; $('#auswahl').hidden = true; sheet.style.visibility = ''; sheetSetzen(vorher); };
-  $('#auswahlAbbruch').onclick = ende;
+  $('#auswahlAbbruch').onclick = () => { sound.tick(); ende(); };
   $('#auswahlOk').onclick = () => {
     const c = map.getCenter();
     ende();
+    haptik('mittel');
     if (bestehend) {
       const rec = trips.get(aktuell).data.records['p:' + bestehend.id];
       schreiben(aktuell, 'p:' + bestehend.id, { ...rec.v, lat: c.lat, lng: c.lng });
+      sound.plopp();
       toast('Position geändert');
     } else ortEditor({ lat: c.lat, lng: c.lng });
   };
@@ -1170,27 +1384,15 @@ function auswahlStarten(bestehend) {
 
 // ---------- Offline-Karte ----------
 let laedt = false;
-async function kartenChip() {
-  const chip = $('#kartenChip');
-  if (offlineKarte || laedt || !aktuell) { if (!laedt) chip.hidden = true; return; }
-  const v = ansicht(aktuell);
-  const inBangkok = v && v.orte.some((o) => o.lat != null && imGebiet(o.lng, o.lat));
-  if (v && v.orte.length && !inBangkok) { chip.hidden = true; return; }
-  chip.hidden = false;
-  chip.style.setProperty('--fortschritt', 0);
-  chip.innerHTML = `<span class="ico">⬇</span><span>Karte offline speichern · <b>${REGION.mb} MB</b></span>`;
-  chip.onclick = karteHerunterladen;
-}
+let ladeAnteil = 0;
 
 async function karteHerunterladen() {
   if (laedt || offlineKarte) return;
   if (!navigator.onLine) return toast('Dafür braucht es Internet – am besten WLAN');
-  const chip = $('#kartenChip');
-  laedt = true;
-  chip.hidden = false;
-  chip.onclick = null;
-  const zeigen = (p) => { chip.style.setProperty('--fortschritt', p); chip.innerHTML = `<span class="ico">⏳</span><span>Offline-Karte wird gespeichert · <b>${Math.round(p * 100)} %</b></span>`; };
-  zeigen(0);
+  laedt = true; ladeAnteil = 0;
+  toast('Offline-Karte wird gespeichert …');
+  neuZeichnen();
+  let zuletzt = 0;
   try {
     try { await navigator.storage.persist(); } catch {}
     const res = await fetch(abs(REGION.datei), { cache: 'no-store' });
@@ -1203,7 +1405,8 @@ async function karteHerunterladen() {
       const { done, value } = await leser.read();
       if (done) break;
       teile.push(value); da += value.length;
-      zeigen(Math.min(1, da / gesamt));
+      ladeAnteil = Math.min(1, da / gesamt);
+      if (ladeAnteil - zuletzt > 0.02) { zuletzt = ladeAnteil; if (ui.ansicht === 'liste') neuZeichnen(); }
     }
     const blob = new Blob(teile, { type: 'application/octet-stream' });
     const c = await caches.open(KARTEN_CACHE);
@@ -1213,17 +1416,16 @@ async function karteHerunterladen() {
     const quelle = map.getSource('protomaps');
     if (quelle && quelle.setUrl) quelle.setUrl('pmtiles://' + REGION.name);
     offlineKarte = true;
-    chip.innerHTML = `<span class="ico">✅</span><span>Offline-Karte gespeichert</span>`;
-    chip.style.setProperty('--fortschritt', 1);
-    setTimeout(() => { chip.hidden = true; }, 3500);
+    laedt = false;
+    neuZeichnen();
+    sound.erfolg(); haptik('erfolg');
+    erfolg({ icon: 'wolkeOk', titel: 'Offline bereit', text: 'Die Karte von Bangkok bis Ayutthaya liegt jetzt auf deinem Handy – sie funktioniert auch ganz ohne Internet.', knopf: 'Super' });
   } catch (e) {
     console.warn(e);
-    toast('Download abgebrochen – später nochmal versuchen');
     laedt = false;
-    kartenChip();
-    return;
+    neuZeichnen();
+    toast('Download abgebrochen – später nochmal versuchen');
   }
-  laedt = false;
 }
 
 // ---------- Installation ----------
@@ -1231,10 +1433,9 @@ let installEvent = null;
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; });
 
 // ---------- Start ----------
-$('#tripKnopf').onclick = () => (aktuell ? tripMenue() : willkommen());
-$('#syncKnopf').onclick = () => syncDialog();
-$('#einladenKnopf').onclick = () => (aktuell ? einladenDialog() : willkommen());
-$('#ortungKnopf').onclick = () => ortungStarten(true);
+$('#tripKnopf').onclick = () => { sound.tick(); aktuell ? tripMenue() : willkommen(); };
+$('#syncKnopf').onclick = () => { sound.tick(); syncDialog(); };
+$('#ortungKnopf').onclick = () => { sound.tick(); haptik('leicht'); ortungStarten(true); };
 addEventListener('online', () => { osmUmschalten(); syncAnzeige(); });
 addEventListener('offline', () => { osmUmschalten(); syncAnzeige(); });
 
@@ -1269,14 +1470,13 @@ async function start() {
   } else if (!aktuell) willkommen();
 
   trips.forEach((_, id) => mitgliedEintragen(id));
-  kartenChip();
   if (navigator.permissions) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') ortungStarten(false); }).catch(() => {});
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || /[?&]sw=1/.test(location.search))) {
     // Neue Version aktiv: einmal neu laden, damit sie sofort gilt (nicht beim allerersten Besuch)
     const hatteSW = !!navigator.serviceWorker.controller;
     let neuGeladen = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hatteSW || neuGeladen || !$('#modal').hidden) return;
+      if (!hatteSW || neuGeladen || !$('#modal').hidden || $('#erfolg')) return;
       neuGeladen = true;
       location.reload();
     });
