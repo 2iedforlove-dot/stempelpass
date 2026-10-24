@@ -1174,6 +1174,14 @@ async function start() {
   kartenChip();
   if (navigator.permissions) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') ortungStarten(false); }).catch(() => {});
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || /[?&]sw=1/.test(location.search))) {
+    // Neue Version aktiv: einmal neu laden, damit sie sofort gilt (nicht beim allerersten Besuch)
+    const hatteSW = !!navigator.serviceWorker.controller;
+    let neuGeladen = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hatteSW || neuGeladen || !$('#modal').hidden) return;
+      neuGeladen = true;
+      location.reload();
+    });
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e));
   }
 }
