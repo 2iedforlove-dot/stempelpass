@@ -88,7 +88,7 @@ h1, h2, h3 { font-family: var(--titel); margin: 0; letter-spacing: -.01em; }
 .karten-chip .ico { font-size: 16px; }
 
 /* ---------- Pins ---------- */
-.pin { width: 44px; height: 54px; position: relative; display: block; filter: drop-shadow(0 3px 4px rgba(29, 26, 43, .25)); transition: transform .25s var(--feder); transform-origin: 50% 100%; }
+.pin { width: 44px; height: 54px; display: block; filter: drop-shadow(0 3px 4px rgba(29, 26, 43, .25)); transition: transform .25s var(--feder); transform-origin: 50% 100%; }
 .pin-koerper {
   position: absolute; left: 4px; top: 0; width: 36px; height: 36px; border-radius: 50% 50% 50% 6px; transform: rotate(-45deg);
   background: var(--papier); border: 2.5px solid var(--tinte); display: grid; place-items: center;

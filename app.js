@@ -280,6 +280,8 @@ function allesZeigen(sanft = true) {
   if (nah.length >= mitOrt.length / 2) mitOrt = nah;
   const b = new maplibregl.LngLatBounds();
   mitOrt.forEach((o) => b.extend([o.lng, o.lat]));
+  // fitBounds rechnet den bestehenden Kartenrand dazu, darum vorher zurücksetzen
+  map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
   map.fitBounds(b, { padding: polster(50), maxZoom: 15, duration: sanft ? 900 : 0 });
 }
 
