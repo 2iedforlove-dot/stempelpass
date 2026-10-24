@@ -88,7 +88,12 @@ h1, h2, h3 { font-family: var(--titel); margin: 0; letter-spacing: -.01em; }
 .karten-chip .ico { font-size: 16px; }
 
 /* ---------- Pins ---------- */
-.pin { width: 44px; height: 54px; display: block; filter: drop-shadow(0 3px 4px rgba(29, 26, 43, .25)); transition: transform .25s var(--feder); transform-origin: 50% 100%; }
+.pin { width: 44px; height: 54px; display: block; filter: drop-shadow(0 3px 4px rgba(29, 26, 43, .25)); transition: scale .25s var(--feder); transform-origin: 50% 100%; }
+/* Lange drücken zum Löschen: kein Textmarkieren, kein iOS-Kontextmenü */
+.ort, .pin { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.ort.gedrueckt { transform: scale(.965); transition: transform .5s ease-out; background: var(--papier-2); }
+.pin.gedrueckt { scale: .88; transition: scale .5s ease-out; }
+.lang-tipp { text-align: center; font-size: 12.5px; color: var(--tinte-3); margin: 12px 0 0; }
 .pin-koerper {
   position: absolute; left: 4px; top: 0; width: 36px; height: 36px; border-radius: 50% 50% 50% 6px; transform: rotate(-45deg);
   background: var(--papier); border: 2.5px solid var(--tinte); display: grid; place-items: center;
@@ -102,7 +107,7 @@ h1, h2, h3 { font-family: var(--titel); margin: 0; letter-spacing: -.01em; }
 .pin.erledigt .pin-nr { background: var(--chili); }
 .pin.erledigt .pin-nr::before { content: '✓'; }
 .pin.erledigt .pin-nr span { display: none; }
-.pin.aktiv { transform: scale(1.28); z-index: 3; }
+.pin.aktiv { scale: 1.28; z-index: 3; }
 .pin.aktiv .pin-koerper { background: var(--tinte); }
 .pin.erledigt.aktiv .pin-koerper { background: var(--safran); border-color: var(--chili); }
 .pin.gedimmt { opacity: .35; }

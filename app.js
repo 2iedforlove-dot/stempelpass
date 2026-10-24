@@ -205,7 +205,7 @@ async function karteStarten() {
   map.on('moveend', osmUmschalten);
   map.on('load', osmUmschalten);
   map.on('click', (e) => { if (!e.originalEvent.target.closest('.pin') && ui.ansicht === 'detail' && !auswahlAktiv) zurListe(); });
-  map.on('contextmenu', (e) => langDruck(e.lngLat));
+  map.on('contextmenu', (e) => { if (!e.originalEvent.target.closest('.pin')) langDruck(e.lngLat); });
   langDruckErkennen();
 }
 
@@ -221,7 +221,7 @@ function langDruckErkennen() {
   let timer = null, start = null;
   const ab = () => { clearTimeout(timer); timer = null; };
   el.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return ab();
+    if (e.touches.length !== 1 || e.target.closest('.pin')) return ab();
     const t = e.touches[0];
     start = { x: t.clientX, y: t.clientY };
     ab();
@@ -236,7 +236,7 @@ function langDruckErkennen() {
 }
 
 function langDruck(lngLat) {
-  if (!aktuell || $('#modal').hidden === false) return;
+  if (!aktuell || $('#modal').hidden === false || Date.now() - langGedrueckt < 1200) return;
   if (navigator.vibrate) navigator.vibrate(15);
   ortEditor({ lat: lngLat.lat, lng: lngLat.lng });
 }
@@ -459,6 +459,7 @@ function sheetZeichnen(v) {
     <div class="scroll">
       ${karten}${leer}
       ${v.meta ? `<button class="hinzu" data-aktion="hinzu"><span style="font-size:20px">＋</span> Ort hinzufügen</button>` : ''}
+      ${n ? '<p class="lang-tipp">Tipp: Lange auf einen Ort drücken zum Löschen oder Bearbeiten</p>' : ''}
     </div>`;
   const s = box.querySelector('.scroll');
   if (s) s.scrollTop = merk;
@@ -884,24 +885,46 @@ function katRaten(r) {
   return 'sonst';
 }
 
+// Photon (komoot) ist fehlertolerant: findet "Marriott marquis queens park" und sogar "marriot marquis".
+// Nominatim bleibt als Rückfallebene, falls Photon nicht erreichbar ist oder nichts findet.
+const PHOTON = 'https://photon.komoot.io/api/';
+async function suchenPhoton(q) {
+  const c = map.getCenter();
+  const p = new URLSearchParams({ q, limit: '10', lang: 'de', lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) });
+  const r = await fetch(PHOTON + '?' + p);
+  if (!r.ok) throw new Error('Photon ' + r.status);
+  return (await r.json()).features.filter((f) => f.properties.name || f.properties.street).map((f) => {
+    const x = f.properties;
+    const adresse = [x.street && (x.street + (x.housenumber ? ' ' + x.housenumber : '')), x.district, x.city, x.country].filter(Boolean).join(', ');
+    return { n: x.name || x.street, ort: adresse, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], k: katRaten({ type: x.osm_value, category: x.osm_key, name: x.name }) };
+  });
+}
+
+function nachNaehe(liste) {
+  const c = map.getCenter();
+  const weit = (x) => Math.hypot(x.lat - c.lat, (x.lng - c.lng) * Math.cos(c.lat * Math.PI / 180));
+  return liste.sort((a, b) => weit(a) - weit(b));
+}
+
 async function suchen(q, beschraenkt) {
+  try {
+    const t = await suchenPhoton(q);
+    if (t.length) return beschraenkt ? nachNaehe(t).slice(0, 1) : nachNaehe(t);
+  } catch (e) { console.warn('Photon', e); }
   const b = map.getBounds();
-  // OpenStreetMap ist bei Apostrophen und Zusätzen streng: "Queen's Park" findet "Queen’s Park" nicht.
+  // Nominatim ist bei Apostrophen und Zusätzen streng: "Queen's Park" findet "Queen’s Park" nicht.
   // Darum nacheinander lockerere Varianten probieren, zuletzt mit weggelassenen Wörtern am Ende.
   const [kopf, ...rest] = q.split(',');
   const woerter = kopf.replace(/['’`´]s?\b/g, '').trim().split(/\s+/);
   const varianten = [q, q.replace(/'/g, '’'), [woerter.join(' '), ...rest].join(',')];
-  for (let n = woerter.length - 1; n >= 2 && varianten.length < 5; n--) varianten.push([woerter.slice(0, n).join(' '), ...rest].join(','));
-  for (const v of [...new Set(varianten)]) {
+  for (let n = woerter.length - 1; n >= 2; n--) varianten.push([woerter.slice(0, n).join(' '), ...rest].join(','));
+  for (const v of [...new Set(varianten)].slice(0, 6)) {
     const p = new URLSearchParams({ format: 'jsonv2', q: v, limit: '8', 'accept-language': 'de,en', viewbox: [b.getWest() - 1, b.getNorth() + 1, b.getEast() + 1, b.getSouth() - 1].join(',') });
     const r = await fetch(NOMINATIM + '?' + p);
     if (!r.ok) throw new Error('Suche fehlgeschlagen');
     const treffer = await r.json();
     if (treffer.length) {
-      // Was nah an der Karte liegt, zuerst
-      const c = map.getCenter();
-      const weit = (x) => Math.hypot(x.lat - c.lat, (x.lng - c.lng) * Math.cos(c.lat * Math.PI / 180));
-      const liste = treffer.map((x) => ({ n: x.name || x.display_name.split(',')[0], ort: x.display_name, lat: +x.lat, lng: +x.lon, k: katRaten(x) })).sort((a, b2) => weit(a) - weit(b2));
+      const liste = nachNaehe(treffer.map((x) => ({ n: x.name || x.display_name.split(',')[0], ort: x.display_name, lat: +x.lat, lng: +x.lon, k: katRaten(x) })));
       return beschraenkt ? liste.slice(0, 1) : liste;
     }
     await new Promise((res) => setTimeout(res, 1000)); // Nominatim: höchstens 1 Anfrage pro Sekunde
@@ -1053,17 +1076,73 @@ function ortEditor(o, ziel) {
     if (neu && o.lat != null) setTimeout(() => detailOeffnen(id), 250);
   };
   const weg = k.querySelector('#oWeg');
-  if (weg) weg.onclick = () => {
-    const rec = trips.get(aktuell).data.records['p:' + o.id];
-    schreiben(aktuell, 'p:' + o.id, { ...rec.v, weg: true });
-    modalSchliessen();
-    zurListe();
-    toast(`„${o.n}“ gelöscht`, 'Rückgängig', () => schreiben(aktuell, 'p:' + o.id, { ...rec.v, weg: false }));
-  };
+  if (weg) weg.onclick = () => { modalSchliessen(); ortLoeschen(o.id); };
   const versch = k.querySelector('#oVerschieben');
   if (versch) versch.onclick = () => { modalSchliessen(); auswahlStarten(o); };
   if (!ziel && neu && !o.n) setTimeout(() => k.querySelector('#oName').focus(), 350);
 }
+
+function ortLoeschen(id) {
+  const rec = trips.get(aktuell).data.records['p:' + id];
+  if (!rec) return;
+  schreiben(aktuell, 'p:' + id, { ...rec.v, weg: true });
+  if (ui.ortId === id) zurListe();
+  toast(`„${rec.v.n}“ gelöscht`, 'Rückgängig', () => schreiben(aktuell, 'p:' + id, { ...rec.v, weg: false }), 5000);
+}
+
+// Menü nach langem Drücken auf einen Ort (Liste oder Pin)
+function ortMenue(id) {
+  const v = ansicht(aktuell);
+  const o = v && v.orte.find((x) => x.id === id);
+  if (!o) return;
+  const k = modal(`
+    <div class="held" style="margin-top:0">
+      <div class="held-emo">${kat(o.k).emoji}</div>
+      <div><div class="eyebrow">Nr. ${o.nr} · ${esc(kat(o.k).name)}</div><h2>${esc(o.n)}</h2></div>
+    </div>
+    <div class="knopf-reihe">
+      <button class="knopf voll rot" id="mLoeschen">🗑 Ort löschen</button>
+      <button class="knopf voll leise" id="mStempel">${o.check ? 'Stempel entfernen' : '✓ Abstempeln'}</button>
+      <button class="knopf voll leise" id="mBearbeiten">Bearbeiten</button>
+    </div>`);
+  k.querySelector('#mLoeschen').onclick = () => { modalSchliessen(); ortLoeschen(id); };
+  k.querySelector('#mStempel').onclick = () => { modalSchliessen(); stempeln(id); };
+  k.querySelector('#mBearbeiten').onclick = () => ortEditor(o);
+}
+
+// Langes Drücken (Finger ~0,5 s) bzw. Rechtsklick auf Ortskarten und Pins
+let langGedrueckt = 0;
+function langDrueckbar(selektor, fn) {
+  let timer = null, start = null, el = null;
+  const ab = () => { clearTimeout(timer); timer = null; if (el) el.classList.remove('gedrueckt'); el = null; };
+  document.addEventListener('pointerdown', (e) => {
+    const ziel = e.target.closest(selektor);
+    if (!ziel || e.button > 0 || e.target.closest('[data-stempel]')) return;
+    ab();
+    el = ziel; start = { x: e.clientX, y: e.clientY };
+    el.classList.add('gedrueckt');
+    timer = setTimeout(() => {
+      const id = el.dataset.id;
+      ab();
+      langGedrueckt = Date.now();
+      if (navigator.vibrate) navigator.vibrate(25);
+      fn(id);
+    }, 520);
+  });
+  document.addEventListener('pointermove', (e) => { if (timer && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) ab(); });
+  ['pointerup', 'pointercancel', 'scroll'].forEach((t) => document.addEventListener(t, () => { if (timer) ab(); }, true));
+  document.addEventListener('contextmenu', (e) => {
+    const ziel = e.target.closest(selektor);
+    if (!ziel) return;
+    e.preventDefault();
+    if (Date.now() - langGedrueckt < 1200) return; // am Handy schon über den Timer ausgelöst
+    langGedrueckt = Date.now();
+    fn(ziel.dataset.id);
+  });
+  // Den Klick nach dem Loslassen schlucken, sonst öffnet sich zusätzlich die Detailansicht
+  document.addEventListener('click', (e) => { if (Date.now() - langGedrueckt < 800 && e.target.closest(selektor)) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
+langDrueckbar('.ort, .pin', ortMenue);
 
 // Punkt in der Kartenmitte wählen
 let auswahlAktiv = false;
