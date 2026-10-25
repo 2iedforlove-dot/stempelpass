@@ -27,6 +27,8 @@
   --text-3: rgba(235, 235, 245, .45);
   --glas: rgba(40, 40, 46, .34);
   --glas-dicht: rgba(32, 32, 36, .58);
+  --glas-flach: rgba(46, 46, 52, .44);
+  --glas-karte: rgba(30, 30, 34, .8);
   --glas-rand: rgba(255, 255, 255, .15);
   --glanz: linear-gradient(155deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .03) 36%, rgba(255, 255, 255, 0) 60%);
   --flaeche: rgba(255, 255, 255, .08);
@@ -49,6 +51,8 @@
   --text-3: rgba(60, 60, 70, .5);
   --glas: rgba(255, 255, 255, .38);
   --glas-dicht: rgba(255, 255, 255, .64);
+  --glas-flach: rgba(255, 255, 255, .5);
+  --glas-karte: rgba(255, 255, 255, .86);
   --glas-rand: rgba(255, 255, 255, .8);
   --glanz: linear-gradient(155deg, rgba(255, 255, 255, .75), rgba(255, 255, 255, .15) 38%, rgba(255, 255, 255, 0) 62%);
   --flaeche: rgba(255, 255, 255, .5);
@@ -63,6 +67,7 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { touch-action: manipulation; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--grund); color: var(--text); font-family: var(--schrift); font-size: 16px; -webkit-font-smoothing: antialiased; overscroll-behavior: none; letter-spacing: -.01em; }
 button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; }
@@ -73,11 +78,15 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -.028em; }
 .verlauf-text { background: var(--regenbogen); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* Glas: halbtransparent, stark weichgezeichnet, mit Lichtkante */
-.glas { background: var(--glanz), var(--glas); backdrop-filter: blur(var(--blur)) saturate(190%); -webkit-backdrop-filter: blur(var(--blur)) saturate(190%); border: 1px solid var(--glas-rand); box-shadow: var(--kante), var(--schatten); }
-.glas-dicht { background: var(--glanz), var(--glas-dicht); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); border: 1px solid var(--glas-rand); box-shadow: var(--kante), var(--schatten); }
+/* .glas: durchscheinend ohne Live-Weichzeichner – der Seitenhintergrund ist schon vorab weichgezeichnet, das sieht gleich aus und kostet nichts.
+   .glas-echt / .glas-dicht: echter Weichzeichner, nur wo scharfer oder bewegter Inhalt dahinter liegt (Karte, Tab-Leiste, Dialoge). */
+.glas { background: var(--glanz), var(--glas-flach); border: 1px solid var(--glas-rand); box-shadow: var(--kante), var(--schatten); }
+.glas-echt { background: var(--glanz), var(--glas); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid var(--glas-rand); box-shadow: var(--kante), var(--schatten); }
+.glas-dicht { background: var(--glanz), var(--glas-dicht); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--glas-rand); box-shadow: var(--kante), var(--schatten); }
 
 /* ---------- Ebenen ---------- */
 #map { position: fixed; inset: 0; z-index: 0; background: var(--grund); }
+body:not(.auf-karte) #map { visibility: hidden; }
 .maplibregl-ctrl-attrib { font-size: 10px; background: color-mix(in srgb, var(--grund) 60%, transparent) !important; color: var(--text-3); }
 .maplibregl-ctrl-attrib a { color: var(--text-3) !important; }
 [data-design='dunkel'] .maplibregl-ctrl-attrib-button { filter: invert(1); }
@@ -88,32 +97,34 @@ body:not(.auf-karte) .maplibregl-ctrl-bottom-right { display: none; }
 .aura { position: absolute; inset: 0; opacity: .5; mix-blend-mode: soft-light; pointer-events: none; }
 .seite-hg.ohne-bild .aura { mix-blend-mode: normal; opacity: .32; }
 [data-design='hell'] .seite-hg.ohne-bild .aura { opacity: .45; }
-.aura i { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(70px); animation: treiben 22s ease-in-out infinite alternate; }
+.aura i { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(70px); }
 .aura i:nth-child(1) { background: #5e5ce6; left: -30vmax; top: -25vmax; }
 .aura i:nth-child(2) { background: #ff2d78; right: -35vmax; top: 10vh; animation-delay: -7s; }
 .aura i:nth-child(3) { background: #ff9f0a; left: -10vmax; bottom: -40vmax; animation-delay: -14s; }
 @keyframes treiben { to { transform: translate(8vmax, 6vmax) scale(1.15); } }
 
 #ansichten { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
-.tab { position: absolute; inset: 0; pointer-events: none; opacity: 0; transform: scale(.985); transition: opacity .32s var(--sanft), transform .4s var(--sanft); }
-.tab.an { opacity: 1; transform: none; }
+.tab { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .28s var(--sanft), visibility 0s .28s; }
+.tab.an { opacity: 1; visibility: visible; transition: opacity .28s var(--sanft); }
 .tab.an > .seite { pointer-events: auto; }
-#tab-karte .seite-karte { pointer-events: none; }
-#tab-karte .seite-karte > * { pointer-events: auto; }
+#tab-karte .seite[data-s='karte'] { pointer-events: none; overflow: hidden; }
+#tab-karte .seite[data-s='karte'] > * { pointer-events: auto; }
 
 .seite {
   position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: none;
   padding: calc(var(--sicher-oben) + 12px) 16px calc(var(--sicher-unten) + var(--tabbar) + 40px);
-  transition: transform .52s var(--feder), filter .52s var(--feder), opacity .3s; isolation: isolate;
+  transition: transform .52s var(--feder), opacity .3s; isolation: isolate;
 }
+.seite::after { content: ''; position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .28); opacity: 0; pointer-events: none; transition: opacity .52s var(--feder); }
+.seite.zugedeckt::after { opacity: var(--dunkel, 1); }
 .seite::-webkit-scrollbar { display: none; }
 .seite.voll { background: transparent; }
-.seite.zugedeckt { transform: translateX(-26%); filter: brightness(.82); pointer-events: none !important; }
+.seite.zugedeckt { transform: translateX(-26%); pointer-events: none !important; }
 .seite.rechts { transform: translateX(104%); }
-.seite.schiebt { transition: none; }
+.seite.schiebt, .seite.schiebt::after { transition: none; }
 /* Seiten, die über der Karte liegen, brauchen einen eigenen Hintergrund */
 .seite-hg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--grund); }
-.seite-hg img { position: absolute; inset: -60px; width: calc(100% + 120px); height: calc(100% + 120px); object-fit: cover; filter: blur(46px) saturate(1.7); }
+.seite-hg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.15); }
 
 /* ---------- Tab-Leiste ---------- */
 .tabbar {
@@ -210,7 +221,7 @@ body:not(.auf-karte) .maplibregl-ctrl-bottom-right { display: none; }
 .segmente .schieber { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; border-radius: 18px; background: var(--glanz), var(--flaeche-3); box-shadow: var(--kante), 0 3px 10px rgba(0, 0, 0, .12); transition: transform .45s var(--federnd); width: calc((100% - 8px) / var(--n, 4)); transform: translateX(calc(var(--i, 0) * 100%)); }
 
 /* Ortskarten */
-.ort { display: flex; align-items: center; gap: 12px; padding: 9px; margin-bottom: 8px; border-radius: 24px; background: var(--glanz), var(--flaeche); border: 1px solid var(--rand); box-shadow: var(--kante); transition: transform .25s var(--feder), background .3s; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.ort { content-visibility: auto; contain-intrinsic-size: auto 80px; display: flex; align-items: center; gap: 12px; padding: 9px; margin-bottom: 8px; border-radius: 24px; background: var(--glanz), var(--flaeche); border: 1px solid var(--rand); box-shadow: var(--kante); transition: transform .25s var(--feder), background .3s; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .ort:active { transform: scale(.985); }
 .ort.gedrueckt { transform: scale(.965); transition: transform .5s ease-out; }
 .ort-bild { position: relative; width: 60px; height: 60px; border-radius: 17px; flex: none; overflow: hidden; background: var(--flaeche-2); }
@@ -251,7 +262,7 @@ body:not(.auf-karte) .maplibregl-ctrl-bottom-right { display: none; }
   transition: transform .4s var(--federnd), box-shadow .4s;
 }
 .scheibe:active { transform: scale(.94); }
-.scheibe svg.ring-text { position: absolute; inset: 0; width: 100%; height: 100%; animation: drehen 60s linear infinite; }
+.scheibe svg.ring-text { position: absolute; inset: 0; width: 100%; height: 100%; animation: drehen 60s linear infinite; will-change: transform; }
 .scheibe svg.ring-text text { fill: var(--text-3); font-size: 7.4px; font-weight: 650; letter-spacing: 1.6px; }
 .scheibe .mitte { position: absolute; inset: 31%; border-radius: 50%; display: grid; place-items: center; color: var(--akzent); background: radial-gradient(circle at 40% 30%, var(--scheibe-a), var(--scheibe-b)); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .2), 0 6px 18px rgba(0, 0, 0, .3); transition: background .4s, color .4s, box-shadow .4s; }
 .scheibe .mitte .ic { width: 44%; height: 44%; }
@@ -292,12 +303,12 @@ body:not(.auf-karte) .maplibregl-ctrl-bottom-right { display: none; }
 .sync.live i { background: var(--gruen); box-shadow: 0 0 10px var(--gruen); animation: puls 2.4s infinite; }
 .sync.wartet i { background: var(--akzent); box-shadow: 0 0 10px var(--akzent); }
 @keyframes puls { 50% { opacity: .45; } }
-.karte-knoepfe { position: absolute; right: 12px; top: calc(var(--sicher-oben) + 70px); display: flex; flex-direction: column; gap: 10px; }
+.karte-knoepfe { position: absolute; right: 12px; top: calc(var(--sicher-oben) + 118px); display: flex; flex-direction: column; gap: 10px; }
 .karte-knoepfe .kreisknopf { width: 48px; height: 48px; }
 .kreisknopf.an { color: var(--akzent); }
 .karussell { position: absolute; left: 0; right: 0; bottom: calc(var(--sicher-unten) + var(--tabbar) + 22px); display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 24px 6px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .karussell::-webkit-scrollbar { display: none; }
-.k-karte { flex: none; width: min(300px, 78vw); scroll-snap-align: center; display: flex; align-items: center; gap: 12px; padding: 9px; border-radius: 26px; text-align: left; transition: transform .3s var(--feder); }
+.k-karte { background: var(--glanz), var(--glas-karte); border: 1px solid var(--glas-rand); box-shadow: var(--kante), var(--schatten); flex: none; width: min(300px, 78vw); scroll-snap-align: center; display: flex; align-items: center; gap: 12px; padding: 9px; border-radius: 26px; text-align: left; transition: transform .3s var(--feder); }
 .k-karte.an { box-shadow: var(--kante), var(--schatten), 0 0 0 2px var(--akzent); }
 .k-karte:active { transform: scale(.98); }
 
@@ -495,6 +506,145 @@ textarea.eingabe { height: auto; min-height: 96px; padding: 13px 16px; resize: v
 .avatar-vorschau { width: 104px; height: 104px; font-size: 44px; margin: 0 auto 22px; transition: background .4s; }
 .avatar-vorschau.ring::before { inset: -5px; }
 .onb-fertig .scheibe { --d: 180px; margin: 0 auto 26px; }
+
+/* ---------- Umschalter Orte | Plan | Tagebuch ---------- */
+.umschalter { margin-bottom: 12px; }
+.umschalter button { height: 40px; font-size: 14px; }
+
+/* Hinweise */
+.hinweise { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -16px 12px; padding: 2px 16px 4px; scrollbar-width: none; }
+.hinweise::-webkit-scrollbar { display: none; }
+.hinweis { flex: none; width: min(300px, 82vw); scroll-snap-align: start; display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px; border-radius: 22px; text-align: left; }
+.hinweis:only-child { width: 100%; }
+.hinweis .e-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; flex: none; }
+.hinweis b { display: block; font-size: 15px; }
+.hinweis small { display: block; font-size: 13px; color: var(--text-2); line-height: 1.4; margin-top: 2px; }
+
+/* Rückblick-Banner */
+.rb-banner { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 24px; margin-bottom: 12px; text-align: left; position: relative; overflow: hidden; }
+.rb-banner::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; background: var(--regenbogen); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+.rb-banner b { display: block; font-size: 16px; }
+.rb-banner small { color: var(--text-2); font-size: 13px; }
+.rb-banner > span:nth-child(2) { flex: 1; }
+.rb-play { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--regenbogen); box-shadow: 0 6px 20px rgba(191, 90, 242, .4); flex: none; }
+
+/* ---------- Tagesplaner ---------- */
+.plan-start { text-align: center; padding: 22px 18px; }
+.tag-chips { display: flex; gap: 8px; overflow-x: auto; margin: 0 -16px 12px; padding: 2px 16px 4px; scrollbar-width: none; }
+.tag-chips::-webkit-scrollbar { display: none; }
+.tag-chip { position: relative; flex: none; min-width: 76px; padding: 9px 12px; border-radius: 18px; text-align: left; transition: transform .25s var(--feder); }
+.tag-chip b { display: block; font-size: 14px; }
+.tag-chip small { display: block; font-size: 12px; color: var(--text-3); margin-top: 1px; }
+.tag-chip i { position: absolute; top: 7px; right: 8px; font-style: normal; font-size: 11px; font-weight: 750; min-width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 9px; background: var(--flaeche-3); color: var(--text-2); }
+.tag-chip.an { box-shadow: var(--kante), var(--schatten), 0 0 0 2px var(--akzent); }
+.tag-chip.an b { color: var(--akzent); }
+.tag-chip.fertig i { background: var(--gruen); color: #fff; }
+.tag-chip.plus { min-width: 50px; display: grid; place-items: center; color: var(--text-2); }
+.tag-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 4px 10px; }
+.tag-kopf b { display: block; font-size: 18px; letter-spacing: -.02em; }
+.tag-kopf small { color: var(--text-3); font-size: 13px; }
+.start-zeile, .bein { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text-3); margin: 0 0 6px 30px; }
+.bein { margin: -2px 0 6px 38px; position: relative; }
+.bein::before { content: ''; position: absolute; left: -14px; top: -8px; bottom: -8px; border-left: 2px dotted var(--flaeche-3); }
+.warnung { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; color: var(--rot); margin: 0 0 6px 6px; }
+.einplanen { position: relative; }
+.einplanen .ort { padding-right: 64px; }
+.einplanen .ort .stempel { display: none; }
+.plus-tag { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 52px; height: 52px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #fff; background: var(--akzent-verlauf); box-shadow: var(--akzent-glow); }
+.plus-tag small { font-size: 9.5px; font-weight: 700; }
+.plus-tag:active { transform: translateY(-50%) scale(.9); }
+
+/* ---------- Tagebuch ---------- */
+.eintrag { border-radius: 24px; overflow: hidden; margin-bottom: 10px; }
+.eintrag .foto { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: cover; background: var(--flaeche-2); }
+.eintrag .foto.laedt { display: grid; place-items: center; align-content: center; gap: 6px; color: var(--text-3); font-size: 12px; }
+.eintrag-text { padding: 12px 14px 12px; }
+.eintrag-text p { margin: 0 0 8px; font-size: 15.5px; line-height: 1.45; white-space: pre-wrap; }
+.eintrag-fuss { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-3); }
+.eintrag-fuss .leute span { width: 22px; height: 22px; font-size: 10px; border-width: 1.5px; }
+.eintrag-fuss .chip { height: 26px; font-size: 12px; padding: 0 9px; margin-left: auto; }
+.stempel-zeile { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 4px 6px 2px; text-align: left; font-size: 14px; color: var(--text-2); margin-bottom: 6px; }
+.stempel-zeile .t-ico { width: 30px; height: 30px; border-radius: 9px; }
+.stempel-zeile span { flex: 1; }
+.stempel-zeile small { color: var(--text-3); font-size: 12px; }
+.foto.vorschau { display: block; width: 100%; border-radius: 20px; margin: 4px 0 14px; max-height: 40vh; object-fit: cover; }
+select.eingabe { appearance: none; -webkit-appearance: none; }
+
+/* Karte: Tagesauswahl */
+.karte-tage { position: absolute; left: 0; right: 0; top: calc(var(--sicher-oben) + 68px); display: flex; gap: 6px; overflow-x: auto; padding: 2px 70px 4px 12px; scrollbar-width: none; }
+.karte-tage::-webkit-scrollbar { display: none; }
+.karte-tage .chip { flex: none; color: var(--text); }
+.karte-tage .chip.an { background: var(--akzent-verlauf); color: #fff; border-color: transparent; }
+
+/* ---------- Rückblick (Story) ---------- */
+.rb { position: fixed; inset: 0; z-index: 60; background: #000; color: #fff; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; animation: einblenden .4s both; }
+.rb.weg { animation: ausblenden .4s both; }
+.rb-balken-oben { position: absolute; z-index: 3; top: calc(var(--sicher-oben) + 10px); left: 10px; right: 10px; display: flex; gap: 4px; }
+.rb-balken-oben i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .3); overflow: hidden; }
+.rb-balken-oben b { display: block; height: 100%; background: #fff; transform-origin: left; transform: scaleX(0); }
+.rb-zu { position: absolute; z-index: 4; top: calc(var(--sicher-oben) + 22px); right: 12px; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(255, 255, 255, .16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.rb-buehne, .rb-folie { position: absolute; inset: 0; }
+.rb-folie { animation: rb-rein .7s var(--sanft) both; }
+@keyframes rb-rein { from { opacity: 0; transform: scale(1.04); } }
+.rb-bild { position: absolute; inset: 0; overflow: hidden; }
+.rb-bild img { width: 100%; height: 100%; object-fit: cover; }
+.rb-bild.kenburns img { animation: kenburns 7s ease-out both; }
+@keyframes kenburns { from { transform: scale(1.22) translate(2%, 2%); } to { transform: scale(1.02); } }
+.rb-bild.unscharf img { filter: blur(26px) saturate(1.5) brightness(.6); transform: scale(1.2); }
+.rb-verlauf { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, .2) 55%, rgba(0, 0, 0, .8)); }
+.rb-verlauf.voll { background: rgba(0, 0, 0, .25); }
+.rb-aura { position: absolute; inset: -20%; filter: blur(70px) saturate(1.4); background: #0b0b14; }
+.rb-aura i { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; animation: treiben 9s ease-in-out infinite alternate; }
+.rb-aura i:nth-child(1) { left: -20vmax; top: -20vmax; background: var(--f, #5e5ce6); }
+.rb-aura i:nth-child(2) { right: -25vmax; top: 20vh; background: #ff2d78; animation-delay: -3s; }
+.rb-aura i:nth-child(3) { left: 0; bottom: -35vmax; background: #ff9f0a; animation-delay: -6s; opacity: .8; }
+.rb-aura.warm i:nth-child(1) { background: #ff453a; }
+.rb-aura.kuehl i:nth-child(2) { background: #0a84ff; }
+.rb-aura.kuehl i:nth-child(3) { background: #30d158; }
+.rb-inhalt { position: absolute; inset: 0; padding: calc(var(--sicher-oben) + 74px) 26px calc(var(--sicher-unten) + 40px); display: flex; flex-direction: column; }
+.rb-inhalt.unten { justify-content: flex-end; }
+.rb-inhalt.mitte { justify-content: center; text-align: center; align-items: center; }
+.rb-inhalt [data-rein] { animation: blur-rein 1s var(--sanft) both; animation-delay: calc(var(--v, 0) * 160ms + 250ms); }
+.rb-klein { font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-bottom: 10px; }
+.rb h1 { font-size: clamp(44px, 13vw, 64px); line-height: 1; letter-spacing: -.045em; font-weight: 800; }
+.rb h2 { font-size: clamp(30px, 8.5vw, 40px); line-height: 1.06; letter-spacing: -.035em; font-weight: 800; }
+.rb p { font-size: 18px; opacity: .85; margin: 12px 0 0; line-height: 1.4; }
+.rb .leute.gross { margin-top: 18px; }
+.rb .leute.gross span { width: 38px; height: 38px; font-size: 16px; margin-left: -10px; border: 2.5px solid rgba(255, 255, 255, .9); }
+.zahlen { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 14px; margin-top: 18px; width: 100%; }
+.zahlen b { display: block; font-size: clamp(54px, 16vw, 80px); font-weight: 800; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .65)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.zahlen span { font-size: 14px; opacity: .8; font-weight: 600; }
+.rb-route { width: 100%; max-width: 420px; margin: 18px auto 0; flex: 1; min-height: 0; overflow: visible; }
+.rb-route .linie { fill: none; stroke: #fff; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: route-zeichnen 3.6s .6s var(--sanft) forwards; filter: drop-shadow(0 0 6px rgba(255, 255, 255, .6)); }
+@keyframes route-zeichnen { to { stroke-dashoffset: 0; } }
+.rb-route circle { stroke: #fff; stroke-width: 2.5; transform-box: fill-box; transform-origin: center; animation: punkt-rein .5s var(--federnd) both; animation-delay: calc(.6s + var(--i) / var(--n) * 3.6s); }
+@keyframes punkt-rein { from { transform: scale(0); } }
+.rb-route .beschr { fill: #fff; font-size: 12px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: rgba(0, 0, 0, .5); stroke-width: 3px; animation: einblenden .6s 1s both; }
+.rb-route .beschr.spaet { animation-delay: 4s; }
+.rb-faecher { position: relative; flex: 1; perspective: 900px; margin-top: 10px; }
+.rb-polaroid { position: absolute; left: 50%; top: 46%; width: 168px; padding: 8px 8px 12px; margin-left: -84px; background: #fff; color: #111; border-radius: 10px; box-shadow: 0 24px 50px rgba(0, 0, 0, .45); transform: translate(var(--x), -50%) rotate(var(--r)); animation: polaroid .9s var(--federnd) both; animation-delay: calc(var(--i) * 260ms + 400ms); }
+@keyframes polaroid { from { opacity: 0; transform: translate(0, 60%) rotate(0) scale(.6); } }
+.rb-polaroid img, .rb-polaroid .farbe { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; display: grid; place-items: center; color: #fff; }
+.rb-polaroid b { display: block; font-size: 13px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-polaroid small { font-size: 11px; color: #666; }
+.rb-collage { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 3px; }
+.rb-collage.n1, .rb-collage.n2 { grid-template-columns: 1fr; }
+.rb-collage.n3 div:first-child, .rb-collage.n5 div:first-child { grid-column: span 2; }
+.rb-collage div { overflow: hidden; animation: einblenden .8s both; animation-delay: calc(var(--i) * 200ms); }
+.rb-collage img { width: 100%; height: 100%; object-fit: cover; animation: kenburns 8s ease-out both; }
+.rb-balken { display: flex; flex-direction: column; gap: 14px; margin-top: 26px; }
+.rb-balken > div { display: grid; grid-template-columns: 36px 70px 1fr 30px; align-items: center; gap: 10px; }
+.rb-balken .av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; border: 2px solid rgba(255, 255, 255, .85); }
+.rb-balken .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-balken .spur { height: 14px; border-radius: 7px; background: rgba(255, 255, 255, .15); overflow: hidden; }
+.rb-balken .spur i { display: block; height: 100%; border-radius: 7px; width: calc(var(--w) * 100%); animation: balken-wachsen 1.4s .8s var(--sanft) both; transform-origin: left; }
+@keyframes balken-wachsen { from { transform: scaleX(0); } }
+.rb-balken b { font-size: 22px; font-weight: 800; text-align: right; }
+.rb-kat { width: 130px; height: 130px; border-radius: 36px; display: grid; place-items: center; color: #fff; margin: 14px 0 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, .4); }
+.rb-scheibe { width: 130px; height: 130px; border-radius: 50%; display: grid; place-items: center; background: var(--regenbogen); box-shadow: 0 0 0 10px rgba(255, 255, 255, .1), 0 0 80px rgba(191, 90, 242, .6); margin-bottom: 24px; }
+.rb-knoepfe { display: flex; gap: 10px; margin-top: 30px; }
+.rb-knoepfe .knopf { color: #fff; }
+.rb-knoepfe .knopf.glas { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .25); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }

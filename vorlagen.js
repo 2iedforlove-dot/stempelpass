@@ -50,12 +50,22 @@ export const BANGKOK = {
 // Bilder auch für Trips, die vor den Bildern angelegt wurden: Zuordnung über den Namen
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const NACH_NAME = Object.fromEntries(BANGKOK.orte.filter((o) => o[5]).map((o) => [norm(o[0]), o[5]]));
-export function bildFuerOrt(o) {
+// groesse: 'orte' (groß), 'klein' (Listen) oder 'hg' (vorab weichgezeichneter Hintergrund)
+export function bildFuerOrt(o, groesse = 'orte') {
   const k = o.b || NACH_NAME[norm(o.n)];
-  return k ? `bilder/orte/${k}.jpg` : null;
+  return k ? `bilder/${groesse}/${k}.webp` : null;
 }
-export function bildFuerTrip(meta) {
+// Beste Zeit für einen Ort: 'wochenende' (nur Sa/So offen), 'abend' (Sonnenuntergang), 'frueh' (morgens hin), 'drinnen' (gut bei Regen)
+const ZEITEN = {
+  chatuchakweekendmarket: 'wochenende', watarun: 'abend', mahanakhonskywalk: 'abend', rooftopbar: 'abend', foodtour: 'abend',
+  grandpalace: 'frueh', floatingmarket: 'frueh', watpho: 'frueh', iconsiam: 'drinnen', emsphere: 'drinnen', massage: 'drinnen',
+};
+export function zeitFuerOrt(o) {
+  return o.z || ZEITEN[norm(o.n)] || ({ shopping: 'drinnen', erholung: 'drinnen', bar: 'abend', aussicht: 'abend' })[o.k] || null;
+}
+
+export function bildFuerTrip(meta, groesse = 'orte') {
   if (!meta) return null;
-  if (meta.b) return `bilder/orte/${meta.b}.jpg`;
-  return norm(meta.n).includes('bangkok') ? `bilder/orte/${BANGKOK.bild}.jpg` : null;
+  const k = meta.b || (norm(meta.n).includes('bangkok') ? BANGKOK.bild : null);
+  return k ? `bilder/${groesse}/${k}.webp` : null;
 }

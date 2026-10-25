@@ -1,17 +1,33 @@
-# Verkleinert die Ortsbilder fürs Handy: Orte auf 720 px Breite, Titelbilder auf 1280 px, JPEG Qualität 78.
+# Erzeugt aus bilder/quelle/*.jpg drei WebP-Größen fürs Handy:
+#   bilder/orte/<name>.webp  720 px (Titelbilder 1280 px) für große Ansichten
+#   bilder/klein/<name>.webp 200 px für Listen und Karten-Vorschauen
+#   bilder/hg/<name>.webp    winzig, vorab weichgezeichnet und gesättigt als Seitenhintergrund
+# Vorab weichgezeichnet spart den teuren CSS-Filter (blur 46px) auf dem Handy.
 # Aufruf: py werkzeug/verkleinern.py
 import os
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 
-ordner = os.path.join(os.path.dirname(__file__), '..', 'bilder', 'orte')
-for f in sorted(os.listdir(ordner)):
-    if not f.lower().endswith('.jpg'):
+wurzel = os.path.join(os.path.dirname(__file__), '..', 'bilder')
+quelle = os.path.join(wurzel, 'quelle')
+for ordner in ('orte', 'klein', 'hg'):
+    os.makedirs(os.path.join(wurzel, ordner), exist_ok=True)
+
+def breite(im, b):
+    return im if im.width <= b else im.resize((b, round(im.height * b / im.width)), Image.LANCZOS)
+
+summe = 0
+for f in sorted(os.listdir(quelle)):
+    if not f.lower().endswith(('.jpg', '.jpeg', '.png')):
         continue
-    pfad = os.path.join(ordner, f)
-    vorher = os.path.getsize(pfad)
-    im = ImageOps.exif_transpose(Image.open(pfad)).convert('RGB')
-    breite = 1280 if f.startswith('titel-') else 720
-    if im.width > breite:
-        im = im.resize((breite, round(im.height * breite / im.width)), Image.LANCZOS)
-    im.save(pfad, 'JPEG', quality=78, optimize=True, progressive=True)
-    print(f'{f:22} {vorher // 1024:5} KB -> {os.path.getsize(pfad) // 1024:4} KB  {im.width}x{im.height}')
+    name = os.path.splitext(f)[0]
+    im = ImageOps.exif_transpose(Image.open(os.path.join(quelle, f))).convert('RGB')
+    gross = breite(im, 1280 if name.startswith('titel-') else 720)
+    gross.save(os.path.join(wurzel, 'orte', name + '.webp'), 'WEBP', quality=76, method=6)
+    breite(im, 200).save(os.path.join(wurzel, 'klein', name + '.webp'), 'WEBP', quality=72, method=6)
+    hg = breite(im, 72).filter(ImageFilter.GaussianBlur(4))
+    hg = ImageEnhance.Color(hg).enhance(1.6)
+    hg.save(os.path.join(wurzel, 'hg', name + '.webp'), 'WEBP', quality=70, method=6)
+    groessen = [os.path.getsize(os.path.join(wurzel, o, name + '.webp')) for o in ('orte', 'klein', 'hg')]
+    summe += sum(groessen)
+    print(f'{name:18} groß {groessen[0] // 1024:4} KB  klein {groessen[1] // 1024:3} KB  hg {groessen[2]:5} B')
+print(f'zusammen {summe // 1024} KB')

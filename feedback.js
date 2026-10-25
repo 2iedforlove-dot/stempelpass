@@ -75,7 +75,49 @@ export const sound = {
   zurueck() { if (!an) return; ton({ f: 523.3, dauer: 0.12, laut: 0.12, typ: 'triangle' }); ton({ f: 784, start: 0.08, dauer: 0.18, laut: 0.12, typ: 'triangle' }); },
   // weiches Öffnen von Dialogen
   auf() { if (!an) return; rauschen({ dauer: 0.16, laut: 0.05, frequenz: 900, q: 0.4 }); ton({ f: 300, f2: 420, dauer: 0.12, laut: 0.04 }); },
+  // Kamera-Auslöser fürs Tagebuch
+  foto() { if (!an) return; rauschen({ dauer: 0.03, laut: 0.25, frequenz: 3000, q: 0.7 }); rauschen({ start: 0.07, dauer: 0.05, laut: 0.18, frequenz: 1800, q: 0.7 }); },
+  // Leise Akkord-Flächen für den Rückblick (Cmaj7 – Am7 – Fmaj7 – G6), mit Glöckchen
+  musikStart() {
+    if (!an || musik) return;
+    const a = audio(); if (!a) return;
+    const master = a.createGain();
+    master.gain.setValueAtTime(0.0001, a.currentTime);
+    master.gain.exponentialRampToValueAtTime(0.11, a.currentTime + 2.5);
+    const filter = a.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 1600;
+    filter.connect(master).connect(a.destination);
+    const akkorde = [[130.8, 329.6, 392, 493.9], [110, 261.6, 329.6, 392], [87.3, 261.6, 329.6, 440], [98, 246.9, 293.7, 329.6]];
+    let n = 0;
+    const spielen = () => {
+      const t0 = a.currentTime + 0.05;
+      akkorde[n % 4].forEach((f, i) => {
+        const o = a.createOscillator(); o.type = i ? 'triangle' : 'sine'; o.frequency.value = f;
+        const g = a.createGain();
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(i ? 0.16 : 0.3, t0 + 1.4); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 4.9);
+        o.connect(g).connect(filter); o.start(t0); o.stop(t0 + 5);
+      });
+      akkorde[n % 4].slice(1).forEach((f, i) => {
+        const o = a.createOscillator(); o.type = 'sine'; o.frequency.value = f * 2;
+        const g = a.createGain(); const s = t0 + 0.6 + i * 0.45 + Math.random() * 0.2;
+        g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.05, s + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, s + 1.6);
+        o.connect(g).connect(master); o.start(s); o.stop(s + 1.7);
+      });
+      n++;
+    };
+    spielen();
+    musik = { master, timer: setInterval(spielen, 4000) };
+  },
+  musikStop() {
+    if (!musik || !ctx) return;
+    const m = musik; musik = null;
+    clearInterval(m.timer);
+    m.master.gain.cancelScheduledValues(ctx.currentTime);
+    m.master.gain.setValueAtTime(m.master.gain.value, ctx.currentTime);
+    m.master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.9);
+    setTimeout(() => m.master.disconnect(), 1200);
+  },
 };
+let musik = null;
 
 // ---------- Vibration ----------
 let schalter = null;

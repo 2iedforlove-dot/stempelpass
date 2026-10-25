@@ -5,7 +5,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 
 const UA = { 'User-Agent': 'Stempelpass/1.0 (https://github.com/2iedforlove-dot/stempelpass; private Familien-Reise-App)' };
 const warten = (ms) => new Promise((res) => setTimeout(res, ms));
-const ZIEL = new URL('../bilder/orte/', import.meta.url);
+const ZIEL = new URL('../bilder/quelle/', import.meta.url);
 const NACHWEISE = new URL('../bilder/nachweise.json', import.meta.url);
 mkdirSync(ZIEL, { recursive: true });
 
