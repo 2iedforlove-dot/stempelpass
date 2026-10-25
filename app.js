@@ -1,5 +1,6 @@
 import { Sync, deriveKeys, newCode, normCode } from './sync.js';
-import { KATEGORIEN, BANGKOK, bildFuerOrt, bildFuerTrip, zeitFuerOrt } from './vorlagen.js';
+import { KATEGORIEN, BANGKOK, bildFuerOrt, bildFuerTrip, zeitFuerOrt, uebersetzterOrt } from './vorlagen.js';
+import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
 import { fotoVerkleinern, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl } from './tagebuch.js';
 import { hinweiseFuer } from './hinweise.js';
@@ -33,6 +34,8 @@ const abs = (p) => new URL(p, location.href).href;
 const zufall = (n = 10) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b & 31]).join('');
 const istIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const istApp = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// Nur lateinische Schrift? (Thai-Adressen aus den Suchdiensten blenden wir aus)
+const latein = (s) => !/[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u20A0-\u20CF\u2100-\u214F]/.test(String(s || ''));
 const flagge = (cc) => cc ? String(cc).toUpperCase().replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0))) : '';
 
 // ---------- Speicher ----------
@@ -117,7 +120,8 @@ function ansicht(tripId) {
     if (k.startsWith('p:') && rec.v && !rec.v.weg) {
       const id = k.slice(2);
       const c = r['c:' + id];
-      orte.push({ id, ...rec.v, check: c && c.v && c.v.ok ? c.v : null });
+      const u = uebersetzterOrt(rec.v.n, rec.v.notiz, ich.sprache);
+      orte.push({ id, ...rec.v, orig: rec.v.n, origNotiz: rec.v.notiz, n: u.n, notiz: u.notiz, check: c && c.v && c.v.ok ? c.v : null });
     } else if (k.startsWith('m:') && rec.v) {
       leute.push({ id: k.slice(2), ...rec.v });
     } else if (k.startsWith('f:') && rec.v && !rec.v.weg) {
@@ -258,6 +262,9 @@ function kartenStil(url, hell) {
   // Ohne die bunten Karten-POIs: nur eure Orte sollen auffallen
   // Beschriftung englisch: in Bangkok haben fast nur englische Namen eine lateinische Schrift
   const schichten = basemaps.layers('protomaps', f, { lang: 'en' }).filter((l) => l.id !== 'background' && l.id !== 'pois');
+  // Statt zweizeilig "Englisch + Thai": Name in der gewählten Sprache, sonst Englisch; Namen in fremder Schrift (script gesetzt) ausblenden
+  const nameAusdruck = ['coalesce', ['get', 'name:' + ich.sprache], ['get', 'name:en'], ['case', ['has', 'script'], '', ['get', 'name']]];
+  for (const l of schichten) if (l.layout && l.layout['text-field'] && JSON.stringify(l.layout['text-field']).includes('"name')) l.layout['text-field'] = nameAusdruck;
   const grund = hell ? '#eceef3' : '#161618';
   return {
     version: 8,
@@ -291,7 +298,7 @@ async function karteStarten() {
   });
   map.touchZoomRotate.disableRotation();
   map.on('moveend', osmUmschalten);
-  map.on('style.load', () => { osmUmschalten(); ebenenAnlegen(); karteBereit = true; pinSchluessel = ''; routeSchluessel = ''; pinsZeichnen(); ichZeichnen(); });
+  map.on('style.load', () => { osmUmschalten(); ebenenAnlegen(); karteBereit = true; pinSchluessel = ''; routeSchluessel = ''; pinsZeichnen(); ichZeichnen(); wegZeichnen(); });
   map.on('click', (e) => {
     if (auswahlAktiv || Date.now() - langGedrueckt < 800) return;
     const id = pinBei(e.point);
@@ -321,6 +328,9 @@ function osmUmschalten() {
 function ebenenAnlegen() {
   map.addSource('orte', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addSource('ich', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addSource('weg', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'weg-rand', type: 'line', source: 'weg', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.9 } });
+  map.addLayer({ id: 'weg', type: 'line', source: 'weg', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': akzentFarbe(), 'line-width': 5 } });
   map.addSource('route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'route-rand', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.85 } });
   map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': akzentFarbe(), 'line-width': 4, 'line-dasharray': [1.2, 1.6] } });
@@ -875,7 +885,7 @@ function planHtml(v) {
   let km = 0, vorher = start;
   const karten = orte.map((o) => {
     let bein = '';
-    if (vorher && o.lat != null) { const d = abstand(vorher, o); km += d; bein = `<div class="bein">${icon('route', 14, 2)} ${meter(d)}</div>`; }
+    if (vorher && o.lat != null) { const d = abstand(vorher, o); km += d; bein = `<button class="bein" data-routeleg="${esc(vorher.id)}|${esc(o.id)}">${icon('route', 14, 2)} ${meter(d)} · ${esc(t('Route'))} ›</button>`; }
     if (o.lat != null) vorher = o;
     const warn = zeitFuerOrt(o) === 'wochenende' && datum && !istWE ? `<div class="warnung">${icon('info', 14, 2.2)} ${esc(t('{ort} hat nur Sa & So offen', { ort: o.n }))}</div>` : '';
     return bein + warn + ortKarte(v, o);
@@ -1090,7 +1100,7 @@ function ortHtml(id, tab) {
     </div>
     ${o.lat == null ? `<button class="knopf akzent voll" data-aktion="verorten" data-id="${esc(o.id)}" style="margin-bottom:12px">${icon('sonst', 19)} ${esc(t('Ort festlegen'))}</button>` : ''}
     ${o.lat != null ? `<div class="zwei">
-      <a class="knopf akzent" href="${routeLink(o)}" target="_blank" rel="noopener">${icon('navi', 19)} ${esc(t('Route'))}</a>
+      <button class="knopf akzent" data-aktion="routehier" data-id="${esc(o.id)}">${icon('navi', 19)} ${esc(t('Route'))}</button>
       <button class="knopf glas" data-aktion="ortaufkarte" data-id="${esc(o.id)}">${icon('karteTab', 19)} ${esc(t('Karte'))}</button>
     </div>` : ''}
     ${o.notiz ? `<div class="box glas"><div class="abschnitt">${esc(t('Notiz'))}</div><p class="notiz">${esc(o.notiz)}</p></div>` : ''}
@@ -1101,12 +1111,6 @@ function ortHtml(id, tab) {
       <button class="knopf glas" data-aktion="notiz" data-id="${esc(o.id)}">${icon('notiz', 19)} ${esc(t('Notiz'))}</button>
     </div>
     ${o.tag ? `<button class="chip" data-aktion="ortmenue" data-id="${esc(o.id)}" style="margin:4px auto 0;display:flex;width:max-content">${icon('kalender', 14)} ${esc(tagLabel(v, o.tag))}</button>` : ''}`;
-}
-
-function routeLink(o) {
-  return istIOS
-    ? `https://maps.apple.com/?daddr=${o.lat},${o.lng}&q=${encodeURIComponent(o.n)}`
-    : `https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}`;
 }
 
 function ortOeffnen(id) {
@@ -1138,10 +1142,11 @@ function karteHtml() {
     <div class="karte-knoepfe">
       <button class="kreisknopf glas-echt ${ortungId != null ? 'an' : ''}" data-aktion="ortung" aria-label="${esc(t('Mein Standort'))}">${icon('ortung', 22)}</button>
       <button class="kreisknopf glas-echt" data-aktion="alle" aria-label="${esc(t('Übersicht'))}">${icon('karte', 22)}</button>
+      ${v ? `<button class="kreisknopf glas-echt ${ui.route ? 'an' : ''}" data-aktion="routeneu" aria-label="${esc(t('Route'))}">${icon('route', 22)}</button>` : ''}
       ${v ? `<button class="kreisknopf glas-echt" data-aktion="hinzu" aria-label="${esc(t('Hinzufügen'))}">${icon('plus', 22)}</button>` : ''}
     </div>
-    ${tagWahl}
-    <div class="karussell">${karten}</div>`;
+    ${ui.route && v ? routeKarteHtml(v) : `${tagWahl}
+    <div class="karussell">${karten}</div>`}`;
 }
 
 // Karussell: was in der Mitte steht, wird auf der Karte angeflogen
@@ -1233,10 +1238,165 @@ function profilHtml() {
     </div>
     <div class="gruppe glas">
       ${zeile('sync', '#0a84ff', t('Sync & Offline-Karte'), `${esc(offlineKarte ? t('Offline ✓') : t('nur online'))} ${pfeilRechts(16)}`, 'sync')}
+      ${zeile('homescreen', '#ff2d78', t('Zum Startbildschirm hinzufügen'), `${esc(istApp ? t('Installiert ✓') : '')} ${pfeilRechts(16)}`, 'homescreen')}
       ${zeile('rakete', '#bf5af2', t('Einführung ansehen'), pfeilRechts(16), 'einfuehrung')}
       ${zeile('bild', '#8e8e93', t('Bildnachweise'), pfeilRechts(16), 'nachweise')}
     </div>
     <p class="klein" style="text-align:center">Stempelpass · ${esc(t('Eure Daten sind Ende-zu-Ende-verschlüsselt.'))}</p>`;
+}
+
+
+// ---------- Route zwischen zwei Orten ----------
+// Punkt-Kennungen: 'ich' (eigener Standort) oder die ID eines Orts
+function routePunkt(v, k) {
+  if (k === 'ich') return pos ? { lat: pos.lat, lng: pos.lng, n: t('Mein Standort'), ich: true } : null;
+  const o = v && v.orte.find((x) => x.id === k);
+  return o && o.lat != null ? o : null;
+}
+
+function standardStart(v, ziel) {
+  if (pos) return 'ich';
+  const h = unterkunft(v);
+  if (h && h.id !== ziel) return h.id;
+  const anderer = v.orte.find((o) => o.lat != null && o.id !== ziel);
+  return anderer ? anderer.id : null;
+}
+
+// Straßennamen aus OSRM (oft Thai) über die Kartendaten in Deutsch/Englisch übersetzen
+let strassenCache = { zeit: 0, map: new Map() };
+function strassenName(roh, ref) {
+  if (!roh) return ref && latein(ref) ? ref : '';
+  if (Date.now() - strassenCache.zeit > 3000 && karteBereit) {
+    const m = new Map();
+    for (const f of map.querySourceFeatures('protomaps', { sourceLayer: 'roads' })) {
+      const p = f.properties;
+      if (p.name && !m.has(p.name)) m.set(p.name, p);
+    }
+    strassenCache = { zeit: Date.now(), map: m };
+  }
+  const p = strassenCache.map.get(roh);
+  const uebersetzt = p && (p['name:' + ich.sprache] || p['name:en']);
+  if (uebersetzt) return uebersetzt;
+  if (latein(roh)) return roh;
+  return ref && latein(ref) ? ref : '';
+}
+
+async function routeStarten(ziel, start) {
+  const v = ansicht(aktuell);
+  if (!routePunkt(v, ziel)) return toast(t('Dieser Ort hat noch keine Position'));
+  ui.route = { nach: ziel, von: start || standardStart(v, ziel), modus: ui.route ? ui.route.modus : 'fuss', schritte: false, daten: null, laedt: false };
+  if (!ui.route.von) { ui.route = null; return toast(t('Für eine Route braucht es einen Startpunkt – Standort erlauben oder einen zweiten Ort anlegen')); }
+  ui.kartenOrt = ziel;
+  tabZeigen('karte');
+  while (ui.stapel.karte.length > 1) zurueck('karte', true);
+  document.body.classList.add('auf-karte');
+  routeBerechnen();
+}
+
+async function routeBerechnen() {
+  const r = ui.route;
+  if (!r) return;
+  const v = ansicht(aktuell);
+  const von = routePunkt(v, r.von), nach = routePunkt(v, r.nach);
+  if (!von || !nach) { r.daten = null; neuZeichnen(); return; }
+  r.laedt = true; r.daten = null;
+  allesZeichnen();
+  const anfrage = (r.anfrage = Symbol());
+  let daten;
+  try { daten = await routeHolen(von, nach, r.modus); } catch { daten = schaetzung(von, nach, r.modus, abstand); }
+  if (ui.route !== r || r.anfrage !== anfrage) return;
+  r.daten = daten; r.laedt = false;
+  wegZeichnen();
+  allesZeichnen();
+  const b = new maplibregl.LngLatBounds();
+  daten.punkte.forEach((p) => b.extend(p));
+  map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+  map.fitBounds(b, { padding: { top: 130, bottom: Math.min(innerHeight * 0.5, 340), left: 40, right: 70 }, maxZoom: 16.5, duration: 800 });
+  setTimeout(() => { strassenCache.zeit = 0; neuZeichnen(); }, 1300); // Straßennamen aus den jetzt geladenen Kacheln
+}
+
+function wegZeichnen() {
+  if (!karteBereit || !map.getSource('weg')) return;
+  const d = ui.route && ui.route.daten;
+  map.getSource('weg').setData(d ? { type: 'Feature', geometry: { type: 'LineString', coordinates: d.punkte }, properties: {} } : { type: 'FeatureCollection', features: [] });
+  map.setPaintProperty('weg', 'line-color', akzentFarbe());
+  map.setPaintProperty('weg', 'line-dasharray', d && d.geschaetzt ? [1, 1.5] : [1, 0]);
+}
+
+function routeSchliessen() {
+  ui.route = null;
+  wegZeichnen();
+  allesZeichnen();
+}
+
+const dauerText = (s) => { const min = Math.max(1, Math.round(s / 60)); return min < 60 ? t('{n} Min', { n: min }) : t('{h} Std {m} Min', { h: Math.floor(min / 60), m: min % 60 }); };
+
+function routeKarteHtml(v) {
+  const r = ui.route;
+  const von = routePunkt(v, r.von), nach = routePunkt(v, r.nach);
+  const d = r.daten;
+  const modi = [['fuss', 'fuss', 'Gehen'], ['auto', 'auto', 'Fahren'], ['rad', 'rad', 'Rad']];
+  const i = Math.max(0, modi.findIndex((m) => m[0] === r.modus));
+  const schritte = d && d.schritte.length ? d.schritte.map((s) => `<li><span class="s-ico">${icon(schrittIcon(s), 18, 2.2)}</span><span>${esc(schrittText(s, t, strassenName(s.name, s.ref), nach ? nach.n : '', r.modus))}</span><small>${s.distanz >= 10 ? meter(s.distanz) : ''}</small></li>`).join('') : '';
+  return `<div class="route-karte glas-dicht">
+    <div class="route-kopf">
+      <div class="route-punkte">
+        <button class="route-punkt" data-routewahl="von"><i class="start"></i><span>${esc(von ? von.n : t('Start wählen'))}</span></button>
+        <button class="route-punkt" data-routewahl="nach"><i class="ende"></i><span>${esc(nach ? nach.n : t('Ziel wählen'))}</span></button>
+      </div>
+      <button class="kreisknopf" data-aktion="routetausch" aria-label="${esc(t('Tauschen'))}">${icon('tauschen', 18, 2.2)}</button>
+      <button class="kreisknopf" data-aktion="routezu" aria-label="${esc(t('Schließen'))}">${icon('x', 18, 2.4)}</button>
+    </div>
+    <div class="segmente" style="--n:3;--i:${i};background:var(--flaeche)"><span class="schieber"></span>${modi.map(([k, ic, tx]) => `<button class="${r.modus === k ? 'an' : ''}" data-routemodus="${k}">${icon(ic, 17, 2)}${esc(t(tx))}</button>`).join('')}</div>
+    <div class="route-summe">
+      ${r.laedt ? `<b>…</b><span>${esc(t('Route wird berechnet'))}</span>` : d ? `<b>${esc(dauerText(d.dauer))}</b><span>${meter(d.distanz)}${d.geschaetzt ? ' · ' + esc(t('Schätzung ohne Internet')) : r.modus === 'auto' ? ' · ' + esc(t('ohne Stau')) : ''}</span>` : `<span>${esc(t('Start und Ziel wählen'))}</span>`}
+    </div>
+    ${schritte ? `<button class="route-schritte-knopf" data-aktion="routeschritte">${icon(r.schritte ? 'runter' : 'orteListe', 16, 2.2)} ${esc(r.schritte ? t('Schritte ausblenden') : t('{n} Schritte anzeigen', { n: d.schritte.length }))}</button>
+      ${r.schritte ? `<ol class="schritte">${schritte}</ol>` : ''}` : ''}
+    ${von && nach ? `<div class="zwei" style="margin:10px 0 0">
+      <a class="knopf" href="${googleRoute(von.ich ? null : von, nach, r.modus)}" target="_blank" rel="noopener">${icon('navi', 18)} Google Maps</a>
+      <a class="knopf" href="${googleRoute(von.ich ? null : von, nach, 'oepnv')}" target="_blank" rel="noopener">${icon('bus', 18)} ${esc(t('Öffis'))}</a>
+    </div>` : ''}
+  </div>`;
+}
+
+function routeWahlDialog(welcher) {
+  const v = ansicht(aktuell);
+  const r = ui.route;
+  const auswahl = [
+    ...(('geolocation' in navigator) ? [{ id: 'ich', n: t('Mein Standort'), ich: true }] : []),
+    ...v.orte.filter((o) => o.lat != null).sort((a, b) => (b.k === 'hotel') - (a.k === 'hotel')),
+  ];
+  const k = modal(`
+    <h2>${esc(welcher === 'von' ? t('Von wo?') : t('Wohin?'))}</h2>
+    <ul class="trip-liste">${auswahl.map((o) => `<li class="${r[welcher] === o.id ? 'an' : ''}"><button class="wahl" data-punkt="${esc(o.id)}">${o.ich ? `<span class="t-emo" style="background:#0a84ff;color:#fff">${icon('ortung', 22)}</span>` : `<span class="t-emo">${bildFuerOrt(o, 'klein') ? `<img src="${bildFuerOrt(o, 'klein')}" alt="">` : katKachel(o.k, 20)}</span>`}<span style="min-width:0"><b>${esc(o.n)}</b><small>${esc(o.ich ? (pos ? t('Wo du gerade bist') : t('Standort wird gesucht …')) : kat(o.k).name)}</small></span></button></li>`).join('')}</ul>`);
+  k.onclick = (e) => {
+    const b = e.target.closest('[data-punkt]');
+    if (!b) return;
+    if (b.dataset.punkt === 'ich' && !pos) ortungStarten(false);
+    r[welcher] = b.dataset.punkt;
+    if (welcher === 'nach') ui.kartenOrt = b.dataset.punkt;
+    modalSchliessen(); sound.tick();
+    setTimeout(routeBerechnen, pos || b.dataset.punkt !== 'ich' ? 0 : 1500);
+  };
+}
+
+// ---------- Zum Home-Bildschirm ----------
+function homescreenDialog() {
+  if (istApp) return toast(t('Stempelpass ist schon als App installiert ✓'));
+  if (installEvent) { installEvent.prompt(); installEvent.userChoice.then((c) => { if (c.outcome === 'accepted') { sound.erfolg(); toast(t('Installiert – du findest Stempelpass jetzt auf dem Startbildschirm')); } }); installEvent = null; return; }
+  const codes = [...trips.values()].map((tr) => { const v = ansicht(tr.keys.id); return `${v.meta ? v.meta.n : '?'}: ${tr.code}`; }).join('\n');
+  const schritte = istIOS
+    ? [['iosTeilen', t('Unten in Safari auf „Teilen“ tippen'), t('Das Quadrat mit dem Pfeil nach oben')], ['homescreen', t('„Zum Home-Bildschirm“ wählen'), t('Etwas nach unten scrollen, falls es nicht gleich zu sehen ist')], ['haken', t('Oben rechts auf „Hinzufügen“'), t('Fertig – das Stempelpass-Symbol liegt jetzt bei deinen Apps')]]
+    : [['mehr', t('Das Browser-Menü öffnen'), t('Meist die drei Punkte oben rechts')], ['homescreen', t('„App installieren“ oder „Zum Startbildschirm hinzufügen“'), t('Je nach Browser heißt es etwas anders')], ['haken', t('Bestätigen'), t('Fertig – das Symbol liegt jetzt bei deinen Apps')]];
+  const k = modal(`
+    <div style="text-align:center"><img src="icons/icon-192.png" alt="" style="width:76px;height:76px;border-radius:18px;box-shadow:var(--schatten);margin:2px 0 14px"></div>
+    <h2 style="text-align:center;padding:0">${esc(t('Auf den Startbildschirm'))}</h2>
+    <p class="lead" style="text-align:center">${esc(t('Dann startet Stempelpass wie eine echte App – im Vollbild und auch offline.'))}</p>
+    <ol class="anleitung">${schritte.map(([ic, a, b], n) => `<li><span class="nr">${n + 1}</span><span class="e-ico" style="background:${['#0a84ff', '#bf5af2', '#30c25a'][n]}">${icon(ic, 18)}</span><span><b>${esc(a)}</b><small>${esc(b)}</small></span></li>`).join('')}</ol>
+    ${istIOS && trips.size ? `<div class="ios-hinweis"><b>${esc(t('Wichtig fürs iPhone:'))}</b> ${esc(t('Die App vom Startbildschirm hat einen eigenen Speicher. Tritt dort deinen Reisen einfach nochmal mit dem Code bei:'))}<pre class="codes">${esc(codes)}</pre><button class="knopf voll" id="hCodes">${icon('kopie', 18)} ${esc(t('Codes kopieren'))}</button></div>` : ''}`);
+  const kc = k.querySelector('#hCodes');
+  if (kc) kc.onclick = async () => { try { await navigator.clipboard.writeText(codes); sound.plopp(); toast(t('Codes kopiert')); } catch { toast(t('Kopieren nicht möglich')); } };
 }
 
 // ---------- Abstempeln ----------
@@ -1333,6 +1493,12 @@ $('#ansichten').addEventListener('click', (e) => {
   if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel); }
   const reise = e.target.closest('[data-reise]');
   if (reise) { aktuell = reise.dataset.reise; tripListeSpeichern(); ui.filter = 'alle'; ui.kartenOrt = null; fuehlen('leicht'); oeffnen({ s: 'reise', trip: aktuell }, 'reisen'); pinsZeichnen(); return; }
+  const rl = e.target.closest('[data-routeleg]');
+  if (rl) { const [von, nach] = rl.dataset.routeleg.split('|'); sound.tick(); return routeStarten(nach, von); }
+  const rw = e.target.closest('[data-routewahl]');
+  if (rw) { sound.tick(); return routeWahlDialog(rw.dataset.routewahl); }
+  const rm = e.target.closest('[data-routemodus]');
+  if (rm) { if (ui.route.modus !== rm.dataset.routemodus) { sound.tick(); fuehlen('leicht'); } ui.route.modus = rm.dataset.routemodus; return routeBerechnen(); }
   const ra = e.target.closest('[data-reiseansicht]');
   if (ra) { if (ui.reiseAnsicht !== ra.dataset.reiseansicht) { sound.tick(); fuehlen('leicht'); } ui.reiseAnsicht = ra.dataset.reiseansicht; return allesZeichnen(); }
   const pt = e.target.closest('[data-plantag]');
@@ -1407,6 +1573,12 @@ $('#ansichten').addEventListener('click', (e) => {
     if (was === 'foto') return eintragDialog(a.dataset.id || null, true);
     if (was === 'notiz') return eintragDialog(a.dataset.id || null, false);
     if (was === 'verorten') return ortVerorten(a.dataset.id);
+    if (was === 'routehier') return routeStarten(a.dataset.id);
+    if (was === 'routeneu') { if (ui.route) return routeSchliessen(); const v = ansicht(aktuell); ui.route = { von: standardStart(v, null), nach: ui.kartenOrt || null, modus: 'fuss', schritte: false, daten: null }; allesZeichnen(); return ui.route.nach ? routeBerechnen() : routeWahlDialog('nach'); }
+    if (was === 'routezu') return routeSchliessen();
+    if (was === 'routetausch') { const r = ui.route; [r.von, r.nach] = [r.nach, r.von]; fuehlen('leicht'); return routeBerechnen(); }
+    if (was === 'routeschritte') { ui.route.schritte = !ui.route.schritte; return allesZeichnen(); }
+    if (was === 'homescreen') return homescreenDialog();
     if (was === 'ortung') return ortungStarten(true);
     if (was === 'alle') return allesZeigen();
     if (was === 'name') return nameDialog();
@@ -1787,7 +1959,7 @@ async function suchenPhoton(q) {
   if (!r.ok) throw new Error('Photon ' + r.status);
   return (await r.json()).features.filter((f) => f.properties.name || f.properties.street).map((f) => {
     const x = f.properties;
-    const adresse = [x.street && (x.street + (x.housenumber ? ' ' + x.housenumber : '')), x.district, x.city, x.country].filter(Boolean).join(', ');
+    const adresse = [x.street && (x.street + (x.housenumber ? ' ' + x.housenumber : '')), x.district, x.city, x.state, x.country].filter((teil) => teil && latein(teil)).filter((teil, i, a) => a.indexOf(teil) === i).join(', ');
     return { n: x.name || x.street, ort: adresse, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], k: katRaten({ type: x.osm_value, category: x.osm_key, name: x.name }) };
   });
 }
@@ -1820,7 +1992,7 @@ async function suchen(q, beschraenkt) {
     if (!r.ok) throw new Error('Suche fehlgeschlagen');
     const treffer = await r.json();
     if (treffer.length) {
-      const liste = nachNaehe(treffer.map((x) => ({ n: x.name || x.display_name.split(',')[0], ort: x.display_name, lat: +x.lat, lng: +x.lon, k: katRaten(x) })));
+      const liste = nachNaehe(treffer.map((x) => ({ n: x.name || x.display_name.split(',')[0], ort: x.display_name.split(', ').filter(latein).join(', '), lat: +x.lat, lng: +x.lon, k: katRaten(x) })));
       return beschraenkt ? liste.slice(0, 1) : liste;
     }
     await new Promise((res) => setTimeout(res, 1000)); // Nominatim: höchstens 1 Anfrage pro Sekunde
@@ -1957,7 +2129,10 @@ function ortEditor(o, ziel) {
     if (!n) { fuehlen('weg'); return toast(t('Bitte einen Namen eingeben')); }
     const id = o.id || zufall(8);
     const alt = o.id ? trips.get(aktuell).data.records['p:' + id].v : {};
-    schreiben(aktuell, 'p:' + id, { ...alt, n: n.slice(0, 80), k: katWahl, notiz: k.querySelector('#oNotiz').value.trim().slice(0, 1000), lat: o.lat ?? null, lng: o.lng ?? null, o: o.id ? alt.o : naechsteOrdnung() });
+    const notizNeu = k.querySelector('#oNotiz').value.trim().slice(0, 1000);
+    const nameSpeichern = o.orig && n === o.n ? o.orig : n.slice(0, 80);
+    const notizSpeichern = o.id && notizNeu === (o.notiz || '').trim() ? (o.origNotiz ?? notizNeu) : notizNeu;
+    schreiben(aktuell, 'p:' + id, { ...alt, n: nameSpeichern, k: katWahl, notiz: notizSpeichern, lat: o.lat ?? null, lng: o.lng ?? null, o: o.id ? alt.o : naechsteOrdnung() });
     modalSchliessen();
     sound.plopp(); fuehlen('mittel');
     toast(neu ? t('„{ort}“ hinzugefügt', { ort: n }) : t('Gespeichert'));
@@ -2231,6 +2406,12 @@ async function start() {
   sync.start();
 
   // Einladungslink: #code=XXXX-XXXX-XXXX
+  const para = new URLSearchParams(location.search);
+  if (ich.eingerichtet && aktuell && (para.get('tab') || para.get('ansicht'))) {
+    if (para.get('tab') === 'karte') tabZeigen('karte');
+    else { ui.reiseAnsicht = para.get('ansicht') || 'orte'; oeffnen({ s: 'reise', trip: aktuell }, 'reisen'); }
+    history.replaceState(null, '', location.pathname);
+  }
   const m = location.hash.match(/code=([A-Za-z0-9-]+)/);
   if (m) history.replaceState(null, '', location.pathname + location.search);
   const einladung = m && normCode(m[1]);

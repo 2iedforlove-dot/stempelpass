@@ -52,7 +52,7 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const NACH_NAME = Object.fromEntries(BANGKOK.orte.filter((o) => o[5]).map((o) => [norm(o[0]), o[5]]));
 // groesse: 'orte' (groß), 'klein' (Listen) oder 'hg' (vorab weichgezeichneter Hintergrund)
 export function bildFuerOrt(o, groesse = 'orte') {
-  const k = o.b || NACH_NAME[norm(o.n)];
+  const k = o.b || NACH_NAME[norm(o.orig || o.n)];
   return k ? `bilder/${groesse}/${k}.webp` : null;
 }
 // Beste Zeit für einen Ort: 'wochenende' (nur Sa/So offen), 'abend' (Sonnenuntergang), 'frueh' (morgens hin), 'drinnen' (gut bei Regen)
@@ -61,7 +61,68 @@ const ZEITEN = {
   grandpalace: 'frueh', floatingmarket: 'frueh', watpho: 'frueh', iconsiam: 'drinnen', emsphere: 'drinnen', massage: 'drinnen',
 };
 export function zeitFuerOrt(o) {
-  return o.z || ZEITEN[norm(o.n)] || ({ shopping: 'drinnen', erholung: 'drinnen', bar: 'abend', aussicht: 'abend' })[o.k] || null;
+  return o.z || ZEITEN[norm(o.orig || o.n)] || ({ shopping: 'drinnen', erholung: 'drinnen', bar: 'abend', aussicht: 'abend' })[o.k] || null;
+}
+
+// Namen und Notizen der Vorlage in beiden Sprachen. Gespeichert bleibt der Originalname (damit Bilder,
+// Zeiten und andere Geräte ihn wiederfinden); angezeigt wird die Übersetzung der gewählten Sprache.
+const NAMEN = {
+  marriottmarquisqueenspark: {
+    de: ['Marriott Marquis Queen’s Park'],
+    en: ['Marriott Marquis Queen’s Park', 'Our hotel – Sukhumvit Soi 22, right next to Benjakitti Park. BTS Phrom Phong / MRT Queen Sirikit National Convention Centre.'],
+  },
+  chatuchakweekendmarket: {
+    de: ['Chatuchak-Wochenendmarkt'],
+    en: ['Chatuchak Weekend Market', 'Saturday & Sunday only – you wanted to go on Sunday. Come early, it gets very hot at midday. MRT Chatuchak Park / BTS Mo Chit.'],
+  },
+  watarun: {
+    de: ['Wat Arun – Tempel der Morgenröte'],
+    en: ['Wat Arun – Temple of Dawn', 'Ferry from Tha Tien pier (near Wat Pho) for a few baht. Most beautiful at sunset from the other bank. Cover shoulders and knees.'],
+  },
+  grandpalace: {
+    de: ['Großer Königspalast'],
+    en: ['Grand Palace', 'Strict dress code: shoulders and knees covered. Go as early as possible. Wat Phra Kaew (Emerald Buddha) is on the grounds.'],
+  },
+  watpho: {
+    de: ['Wat Pho – Liegender Buddha'],
+    en: ['Wat Pho – Reclining Buddha', 'The reclining Buddha, right next to the Grand Palace. The famous massage school is here too.'],
+  },
+  benjakittipark: { de: ['Benjakitti-Park'], en: ['Benjakitti Park', 'Forest park with a skywalk over the wetlands. Great for cycling.'] },
+  lumpinipark: { de: ['Lumpini-Park'], en: ['Lumphini Park', 'Monitor lizards at the lake! Pleasant in the morning and evening, pedal boats.'] },
+  ancientcity: {
+    de: ['Antike Stadt (Muang Boran)'],
+    en: ['Ancient City (Muang Boran)', 'Huge open-air museum in Samut Prakan. Rent a bike or a golf cart.'],
+  },
+  massage: { de: ['Thai-Massage'], en: ['Thai massage', 'Thai massage – e.g. at the massage school in Wat Pho or anywhere in the neighbourhood.'] },
+  rooftopbar: { de: ['Dachterrassen-Bar'], en: ['Rooftop bar', 'In the evening with a view over the city.'] },
+  chaophrayabootsfahrt: {
+    de: ['Bootsfahrt auf dem Chao Phraya'],
+    en: ['Chao Phraya boat ride', 'Chao Phraya Express Boat from Sathorn Pier – the cheapest city tour. Stops at Wat Arun, Wat Pho and ICONSIAM, among others.'],
+  },
+  floatingmarket: {
+    de: ['Schwimmender Markt (Damnoen Saduak)'],
+    en: ['Floating Market (Damnoen Saduak)', 'Damnoen Saduak, about 100 km away – a day trip early in the morning.'],
+  },
+  foodtour: { de: ['Streetfood-Tour'], en: ['Street food tour', 'Street food – e.g. in the evening in Chinatown (Yaowarat Road).'] },
+  talatnoi: { de: ['Talat Noi'], en: ['Talat Noi', 'Hip, street art, Chinatown. Old alleys and cafés by the river.'] },
+  iconsiam: { de: ['ICONSIAM'], en: ['ICONSIAM', 'Huge riverside mall with a floating market inside.'] },
+  emsphere: { de: ['EmSphere'], en: ['EmSphere', 'New mall on Sukhumvit Road (BTS Phrom Phong).'] },
+  mahanakhonskywalk: {
+    de: ['Mahanakhon Skywalk'],
+    en: ['Mahanakhon SkyWalk', 'Glass floor at the very top of King Power Mahanakhon. Lovely at sunset. BTS Chong Nonsi.'],
+  },
+  bangkrachao: { de: ['Bang Krachao – grüne Lunge'], en: ['Bang Krachao – green lung', 'Bangkok’s green lung. Rent a bike and ride through the jungle.'] },
+  ayutthaya: { de: ['Ayutthaya'], en: ['Ayutthaya', 'The old royal capital. The Buddha head in the tree is at Wat Mahathat. Day trip.'] },
+  goldenmount: { de: ['Goldener Berg (Wat Saket)'], en: ['Golden Mount (Wat Saket)', 'Wat Saket – climb the stairs for a panoramic view over the old town.'] },
+};
+
+// Anzeige in der gewählten Sprache; Notiz nur übersetzen, wenn sie noch der Vorlage entspricht
+export function uebersetzterOrt(n, notiz, sprache) {
+  const e = NAMEN[norm(n)];
+  if (!e || !e[sprache]) return { n, notiz };
+  const vorlage = BANGKOK.orte.find((o) => norm(o[0]) === norm(n));
+  const notizUnveraendert = !notiz || (vorlage && notiz === vorlage[4]);
+  return { n: e[sprache][0] || n, notiz: notizUnveraendert && e[sprache][1] ? e[sprache][1] : notiz };
 }
 
 export function bildFuerTrip(meta, groesse = 'orte') {

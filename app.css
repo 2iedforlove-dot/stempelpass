@@ -576,6 +576,40 @@ select.eingabe { appearance: none; -webkit-appearance: none; }
 .karte-tage .chip { flex: none; color: var(--text); }
 .karte-tage .chip.an { background: var(--akzent-verlauf); color: #fff; border-color: transparent; }
 
+/* ---------- Route zwischen zwei Orten ---------- */
+.route-karte { position: absolute; left: 10px; right: 10px; bottom: calc(var(--sicher-unten) + var(--tabbar) + 20px); max-height: calc(100dvh - var(--sicher-oben) - var(--tabbar) - 150px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 12px; border-radius: 28px; animation: hochgleiten .45s var(--feder) both; }
+@media (min-width: 560px) { .route-karte { left: auto; width: 400px; } }
+.route-kopf { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.route-kopf .kreisknopf { width: 38px; height: 38px; background: var(--flaeche-2); flex: none; }
+.route-punkte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.route-punkte::before { content: ''; position: absolute; left: 13px; top: 19px; bottom: 19px; border-left: 2px dotted var(--text-3); }
+.route-punkt { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border-radius: 13px; background: var(--flaeche); text-align: left; font-size: 15px; font-weight: 600; min-width: 0; }
+.route-punkt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.route-punkt i { width: 10px; height: 10px; border-radius: 50%; flex: none; position: relative; z-index: 1; }
+.route-punkt i.start { background: #0a84ff; box-shadow: 0 0 0 3px rgba(10, 132, 255, .25); }
+.route-punkt i.ende { background: var(--akzent); border-radius: 3px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--akzent) 25%, transparent); }
+.route-karte .segmente { margin-bottom: 10px; }
+.route-summe { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px 6px; }
+.route-summe b { font-size: 28px; font-weight: 750; letter-spacing: -.03em; }
+.route-summe span { color: var(--text-2); font-size: 14px; }
+.route-schritte-knopf { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 650; color: var(--akzent); padding: 6px 4px; }
+.schritte { list-style: none; margin: 4px 0 0; padding: 0; }
+.schritte li { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-top: 1px solid var(--rand); font-size: 14.5px; }
+.schritte li > span:nth-child(2) { flex: 1; }
+.schritte .s-ico { width: 32px; height: 32px; border-radius: 10px; background: var(--flaeche-2); display: grid; place-items: center; flex: none; }
+.schritte small { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+button.bein { background: none; color: var(--text-3); text-align: left; }
+button.bein:active { color: var(--akzent); }
+
+/* Anleitung Startbildschirm */
+.anleitung { list-style: none; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
+.anleitung li { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 20px; background: var(--flaeche); border: 1px solid var(--rand); }
+.anleitung .nr { width: 22px; font-weight: 800; color: var(--text-3); text-align: center; flex: none; }
+.anleitung .e-ico { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff; flex: none; }
+.anleitung b { display: block; font-size: 15px; }
+.anleitung small { color: var(--text-2); font-size: 13px; }
+pre.codes { font: 600 14px/1.6 ui-monospace, Menlo, Consolas, monospace; background: var(--flaeche); border-radius: 12px; padding: 10px 12px; margin: 10px 0; white-space: pre-wrap; color: var(--text); user-select: all; -webkit-user-select: all; }
+
 /* ---------- Rückblick (Story) ---------- */
 .rb { position: fixed; inset: 0; z-index: 60; background: #000; color: #fff; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; animation: einblenden .4s both; }
 .rb.weg { animation: ausblenden .4s both; }

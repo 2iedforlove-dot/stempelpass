@@ -1,4 +1,5 @@
 {
+  "id": "./",
   "name": "Stempelpass",
   "short_name": "Stempelpass",
   "description": "Reiseziele auf der Karte abstempeln – gemeinsam, auch offline.",
@@ -6,12 +7,17 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0d0d0f",
-  "theme_color": "#0d0d0f",
+  "background_color": "#0a0a0c",
+  "theme_color": "#0a0a0c",
   "lang": "de",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Karte", "short_name": "Karte", "url": "./?tab=karte", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Tagesplan", "short_name": "Plan", "url": "./?ansicht=plan", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Tagebuch", "short_name": "Tagebuch", "url": "./?ansicht=tagebuch", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }
