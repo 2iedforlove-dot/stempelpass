@@ -1,12 +1,11 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-design="dunkel">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Stempelpass</title>
 <meta name="description" content="Reiseziele auf der Karte abstempeln – gemeinsam, auch offline.">
-<meta name="theme-color" content="#0d0d0f">
-<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,43 +15,45 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="app.css">
+<script>
+  // Design vor dem ersten Zeichnen setzen, damit nichts aufblitzt
+  try {
+    const d = (JSON.parse(localStorage.getItem('sp.ich') || '{}').design) || 'auto';
+    const hell = d === 'hell' || (d === 'auto' && matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.dataset.design = hell ? 'hell' : 'dunkel';
+  } catch {}
+</script>
 </head>
 <body>
 <div id="map" aria-label="Karte"></div>
 
-<header class="oben">
-  <button class="trip-knopf glas" id="tripKnopf" aria-label="Trips und Einstellungen">
-    <span class="trip-emo" id="tripEmo">🗺️</span>
-    <span class="trip-name" id="tripName">Stempelpass</span>
-    <svg class="ic pfeil" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-  </button>
-  <button class="sync glas" id="syncKnopf" aria-label="Sync-Status"><i></i><span>…</span></button>
-</header>
+<main id="ansichten">
+  <section class="tab an" id="tab-reisen" aria-label="Reisen"></section>
+  <section class="tab" id="tab-karte" aria-label="Karte"></section>
+  <section class="tab" id="tab-profil" aria-label="Profil"></section>
+</main>
 
-<div class="seitenknoepfe">
-  <button class="rund glas" id="ortungKnopf" aria-label="Mein Standort" title="Mein Standort">
-    <svg class="ic" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M18 12a6 6 0 1 1-12 0 6 6 0 0 1 12 0z M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/></svg>
-  </button>
-</div>
+<nav class="tabbar glas-dicht" id="tabbar" aria-label="Navigation">
+  <span class="tab-blase"></span>
+  <button class="tab-knopf an" data-tab="reisen"></button>
+  <button class="tab-knopf" data-tab="karte"></button>
+  <button class="tab-knopf" data-tab="profil"></button>
+</nav>
 
 <div class="auswahl" id="auswahl" hidden>
   <div class="fadenkreuz"><svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="#fff" stroke-width="1.4" aria-hidden="true"><path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3" fill="#fff" stroke="none"/></svg></div>
   <div class="auswahl-leiste">
-    <button class="knopf glas" id="auswahlAbbruch">Abbrechen</button>
-    <button class="knopf orange" id="auswahlOk">Hier setzen</button>
+    <button class="knopf glas" id="auswahlAbbruch"></button>
+    <button class="knopf akzent" id="auswahlOk"></button>
   </div>
 </div>
 
-<section class="sheet glas" id="sheet" aria-label="Orte">
-  <div id="sheetInhalt"></div>
-</section>
-
 <div class="modal" id="modal" hidden>
   <div class="modal-hg" data-zu></div>
-  <div class="modal-karte" role="dialog" aria-modal="true" id="modalKarte"></div>
+  <div class="modal-karte glas-dicht" role="dialog" aria-modal="true" id="modalKarte"></div>
 </div>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="toast glas-dicht" id="toast" role="status" aria-live="polite"></div>
 <div class="konfetti" id="konfetti" aria-hidden="true"></div>
 
 <script src="vendor/maplibre-gl.js"></script>
