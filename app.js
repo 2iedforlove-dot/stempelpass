@@ -1,5 +1,7 @@
 import { Sync, deriveKeys, newCode, normCode } from './sync.js';
-import { KATEGORIEN, BANGKOK, bildFuerOrt, bildFuerTrip, zeitFuerOrt, uebersetzterOrt } from './vorlagen.js';
+import { KATEGORIEN, BANGKOK, bildFuerOrt, bildFuerTrip, zeitFuerOrt, uebersetzterOrt, wikiFuerOrt } from './vorlagen.js';
+import { zieleSuchen, zielInfo, sehenswuerdigkeiten } from './ziele.js';
+import { guideLaden, Sprecher } from './audioguide.js';
 import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
 import { fotoVerkleinern, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl } from './tagebuch.js';
@@ -120,7 +122,7 @@ function ansicht(tripId) {
     if (k.startsWith('p:') && rec.v && !rec.v.weg) {
       const id = k.slice(2);
       const c = r['c:' + id];
-      const u = uebersetzterOrt(rec.v.n, rec.v.notiz, ich.sprache);
+      const u = uebersetzterOrt(rec.v.nl && rec.v.nl[ich.sprache] ? rec.v.nl[ich.sprache] : rec.v.n, rec.v.notiz, ich.sprache);
       orte.push({ id, ...rec.v, orig: rec.v.n, origNotiz: rec.v.notiz, n: u.n, notiz: u.notiz, check: c && c.v && c.v.ok ? c.v : null });
     } else if (k.startsWith('m:') && rec.v) {
       leute.push({ id: k.slice(2), ...rec.v });
@@ -667,6 +669,7 @@ function allesZeichnen() {
   pinsZeichnen();
   syncAnzeige();
   fremdeStempelMelden();
+  miniPlayer();
   $('#auswahlAbbruch').textContent = t('Abbrechen');
   $('#auswahlOk').textContent = t('Hier setzen');
 }
@@ -834,6 +837,7 @@ function reiseHtml(id) {
         ${offline}
       </div>
       ${v.erledigt ? `<button class="rb-banner glas" data-aktion="rueckblick"><span class="rb-play">${icon('play', 18, 2.4)}</span><span><b>${esc(t('Rückblick ansehen'))}</b><small>${esc(t('Eure Reise als Story – mit Musik'))}</small></span>${pfeilRechts()}</button>` : ''}
+      ${v.meta ? `<button class="knopf glas voll entdecken" data-aktion="entdecken">${icon('funken', 19)} ${esc(t('Sehenswürdigkeiten entdecken'))}</button>` : ''}
       ${segmenteHtml(v)}
       ${liste.map((o) => ortKarte(v, o)).join('')}${leer}
       ${n ? `<p class="lang-tipp">${esc(t('Lange auf einen Ort drücken zum Löschen oder Bearbeiten'))}</p>` : ''}`}
@@ -1103,6 +1107,7 @@ function ortHtml(id, tab) {
       <button class="knopf akzent" data-aktion="routehier" data-id="${esc(o.id)}">${icon('navi', 19)} ${esc(t('Route'))}</button>
       <button class="knopf glas" data-aktion="ortaufkarte" data-id="${esc(o.id)}">${icon('karteTab', 19)} ${esc(t('Karte'))}</button>
     </div>` : ''}
+    ${guideHtml(o)}
     ${o.notiz ? `<div class="box glas"><div class="abschnitt">${esc(t('Notiz'))}</div><p class="notiz">${esc(o.notiz)}</p></div>` : ''}
     <div class="abschnitt">${esc(t('Tagebuch'))}</div>
     ${v.eintraege.filter((e) => e.ort === o.id).map((e) => eintragHtml(v, e, false)).join('')}
@@ -1493,6 +1498,13 @@ $('#ansichten').addEventListener('click', (e) => {
   if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel); }
   const reise = e.target.closest('[data-reise]');
   if (reise) { aktuell = reise.dataset.reise; tripListeSpeichern(); ui.filter = 'alle'; ui.kartenOrt = null; fuehlen('leicht'); oeffnen({ s: 'reise', trip: aktuell }, 'reisen'); pinsZeichnen(); return; }
+  const gk = e.target.closest('[data-guidekap]');
+  if (gk) { sound.tick(); return guideStarten(gk.dataset.id, gk.dataset.guidekap); }
+  const gs = e.target.closest('[data-satz]');
+  if (gs) {
+    const id = gs.closest('[data-guide]').dataset.guide;
+    guideStarten(id, null); sprecher.start(+gs.dataset.satz); return;
+  }
   const rl = e.target.closest('[data-routeleg]');
   if (rl) { const [von, nach] = rl.dataset.routeleg.split('|'); sound.tick(); return routeStarten(nach, von); }
   const rw = e.target.closest('[data-routewahl]');
@@ -1521,7 +1533,7 @@ $('#ansichten').addEventListener('click', (e) => {
   const einst = e.target.closest('[data-einst]');
   if (einst) {
     ich[einst.dataset.einst] = einst.dataset.wert; ichSpeichern(); sound.tick(); fuehlen('leicht');
-    if (einst.dataset.einst === 'sprache') { setzeSprache(ich.sprache); tabLeisteZeichnen(); if (map) karteNeuStylen(); }
+    if (einst.dataset.einst === 'sprache') { sprecher.stop(); sprecher.ortId = null; setzeSprache(ich.sprache); tabLeisteZeichnen(); if (map) karteNeuStylen(); }
     return designAnwenden();
   }
   const ak = e.target.closest('[data-akzent]');
@@ -1579,6 +1591,11 @@ $('#ansichten').addEventListener('click', (e) => {
     if (was === 'routetausch') { const r = ui.route; [r.von, r.nach] = [r.nach, r.von]; fuehlen('leicht'); return routeBerechnen(); }
     if (was === 'routeschritte') { ui.route.schritte = !ui.route.schritte; return allesZeichnen(); }
     if (was === 'homescreen') return homescreenDialog();
+    if (was === 'entdecken') return entdeckenDialog();
+    if (was === 'guideplay') return guideStarten(a.dataset.id);
+    if (was === 'guidetempo') { sprecher.tempoWechseln(); return allesZeichnen(); }
+    if (was === 'guidezurueck') return sprecher.springen(-1);
+    if (was === 'guidevor') return sprecher.springen(1);
     if (was === 'ortung') return ortungStarten(true);
     if (was === 'alle') return allesZeigen();
     if (was === 'name') return nameDialog();
@@ -1753,20 +1770,48 @@ function codeDialog() {
   setTimeout(() => feld.focus(), 350);
 }
 
+// ---------- Neue Reise: Ziel weltweit wählen ----------
 function neuerTripDialog() {
-  const emojis = ['🏝️', '🏔️', '🏙️', '🇹🇭', '🇯🇵', '🇮🇹', '🇪🇸', '🇬🇷', '🇺🇸', '🇫🇷', '🇭🇷', '🚗', '⛺', '🎿'];
-  let wahl = emojis[0];
   const hatBangkok = [...trips.keys()].some((id) => /bangkok/i.test(ansicht(id).meta?.n || ''));
   const k = modal(`
-    <h2>${esc(t('Neue Reise'))}</h2>
-    <p class="lead">${esc(t('Danach Orte hinzufügen – einzeln suchen, auf der Karte setzen oder eine ganze Liste einfügen.'))}</p>
-    ${hatBangkok ? '' : `<button class="knopf regenbogen voll" id="nBkk" style="margin-bottom:16px">🇹🇭 ${esc(t('Bangkok-Reise vom Zettel'))}</button>`}
-    <label class="feld"><span>${esc(t('Name'))}</span><input class="eingabe" id="nName" placeholder="${esc(t('z. B. Japan 2027'))}"></label>
-    <label class="feld"><span>${esc(t('Symbol'))}</span></label>
-    <div class="kat-wahl" id="nEmo">${emojis.map((e, i) => `<button data-e="${e}" class="${i ? '' : 'an'}" style="font-size:20px;padding:0 10px">${e}</button>`).join('')}</div>
-    <div class="knopf-reihe"><button class="knopf voll akzent" id="nOk">${esc(t('Reise anlegen'))}</button></div>`);
+    <h2>${esc(t('Wohin geht die Reise?'))}</h2>
+    <p class="lead">${esc(t('Stadt, Region oder Land – weltweit. Die bekanntesten Sehenswürdigkeiten schlagen wir dir gleich vor.'))}</p>
+    <input class="eingabe" id="zSuche" type="search" enterkeyhint="search" autocomplete="off" placeholder="${esc(t('z. B. Lissabon, Japan, Toskana'))}">
+    <div class="ort-vorschlaege" id="zListe"></div>
+    <div class="knopf-reihe">
+      ${hatBangkok ? '' : `<button class="knopf regenbogen voll" id="nBkk">🇹🇭 ${esc(t('Bangkok-Reise vom Zettel'))}</button>`}
+      <button class="knopf voll" id="zLeer">${icon('plus', 19)} ${esc(t('Ohne Ziel anlegen'))}</button>
+    </div>`);
+  const feld = k.querySelector('#zSuche'), liste = k.querySelector('#zListe');
+  let treffer = [], timer, nr = 0;
+  const typName = (typ) => ({ country: t('Land'), state: t('Region'), city: t('Stadt'), district: t('Stadtteil'), locality: t('Ort') })[typ] || '';
+  const los = async () => {
+    const q = feld.value.trim();
+    if (q.length < 2) return;
+    const meine = ++nr;
+    liste.innerHTML = `<p class="klein">${esc(t('Suche …'))}</p>`;
+    try { treffer = await zieleSuchen(q, ich.sprache); } catch { treffer = []; }
+    if (meine !== nr) return;
+    liste.innerHTML = treffer.map((z, i) => `<button class="glas" data-ziel="${i}"><span class="flagge">${flagge(z.cc) || '🗺️'}</span><span style="min-width:0"><b>${esc(z.n)}</b><small>${esc([typName(z.typ), z.typ === 'country' ? '' : z.region, z.typ === 'country' ? '' : z.land].filter(Boolean).join(' · '))}</small></span></button>`).join('')
+      || `<p class="klein">${esc(navigator.onLine ? t('Nichts gefunden.') : t('Dafür braucht es Internet.'))}</p>`;
+  };
+  feld.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(los, 400); });
+  feld.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(timer); los(); } });
+  liste.onclick = (e) => { const b = e.target.closest('[data-ziel]'); if (b) { sound.tick(); zielDialog(treffer[+b.dataset.ziel]); } };
   const bkk = k.querySelector('#nBkk');
   if (bkk) bkk.onclick = () => { modalSchliessen(); bangkokAnlegen(); };
+  k.querySelector('#zLeer').onclick = () => leereReiseDialog();
+  setTimeout(() => feld.focus(), 350);
+}
+
+function leereReiseDialog() {
+  const emojis = ['🏝️', '🏔️', '🏙️', '🚗', '⛺', '🎿', '🏖️', '🚂'];
+  let wahl = emojis[0];
+  const k = modal(`
+    <h2>${esc(t('Neue Reise'))}</h2>
+    <label class="feld"><span>${esc(t('Name'))}</span><input class="eingabe" id="nName" placeholder="${esc(t('z. B. Japan 2027'))}"></label>
+    <div class="kat-wahl" id="nEmo">${emojis.map((e, i) => `<button data-e="${e}" class="${i ? '' : 'an'}" style="font-size:20px;padding:0 10px">${e}</button>`).join('')}</div>
+    <div class="knopf-reihe"><button class="knopf voll akzent" id="nOk">${esc(t('Reise anlegen'))}</button></div>`);
   k.querySelector('#nEmo').onclick = (e) => {
     const b = e.target.closest('[data-e]'); if (!b) return;
     wahl = b.dataset.e; sound.tick();
@@ -1778,8 +1823,205 @@ function neuerTripDialog() {
     modalSchliessen();
     await tripAnlegen(n.slice(0, 40), wahl);
     sound.plopp();
-    setTimeout(() => hinzufuegenDialog('liste'), 500);
+    setTimeout(() => hinzufuegenDialog('suchen'), 500);
   };
+}
+
+// Liste der vorgeschlagenen Sehenswürdigkeiten mit Häkchen
+function sehenswertListe(liste, vorausgewaehlt) {
+  return liste.map((s, i) => `<label class="sw-zeile">
+    <input type="checkbox" class="sw-haken" data-sw="${i}" ${i < vorausgewaehlt ? 'checked' : ''}>
+    ${s.bf ? `<img src="${bildFuerOrt({ bf: s.bf }, 'klein')}" alt="" loading="lazy">` : katKachel(s.k, 22, 'sw-ico')}
+    <span style="min-width:0"><b>${esc(s.n)}</b><small>${esc(s.info || kat(s.k).name)}</small></span>
+    <span class="sw-mark">${icon('haken', 15, 3)}</span>
+  </label>`).join('');
+}
+
+async function zielDialog(ziel) {
+  const k = modal(`
+    <div class="ziel-kopf" id="zKopf"><div class="cover-verlauf" style="background:${verlauf(ziel.n)}">${flagge(ziel.cc) || '🗺️'}</div>
+      <div class="ziel-titel"><span class="chip-glas">${flagge(ziel.cc)} ${esc(ziel.land || ziel.n)}</span><h2>${esc(ziel.n)}</h2></div></div>
+    <p class="klein" id="zText"></p>
+    <div class="zwei">
+      <label class="feld"><span>${esc(t('Von'))}</span><input class="eingabe" type="date" id="zVon"></label>
+      <label class="feld"><span>${esc(t('Bis'))}</span><input class="eingabe" type="date" id="zBis"></label>
+    </div>
+    <div class="abschnitt" style="margin-top:6px">${esc(t('Top-Sehenswürdigkeiten'))}</div>
+    <div id="zSw"><div class="leer-hinweis">${icon('sync', 26)}${esc(t('Suche die bekanntesten Orte …'))}</div></div>
+    <div class="knopf-reihe" style="position:sticky;bottom:0"><button class="knopf voll akzent" id="zOk" disabled>${esc(t('Reise anlegen'))}</button></div>`);
+  const info = zielInfo(ziel.n, ich.sprache).catch(() => ({}));
+  let liste = [];
+  try { liste = await sehenswuerdigkeiten(ziel.lat, ziel.lng, ziel.radius, ich.sprache); } catch { liste = []; }
+  const i = await info;
+  if (!k.isConnected) return;
+  // Länder: Satellitenbilder und Karten taugen nicht als Titelbild – dann das Foto der bekanntesten Sehenswürdigkeit
+  let titelDatei = i.bf;
+  if (!titelDatei || ziel.typ === 'country' || /satellit|map|karte|flag|locator|lage/i.test(titelDatei)) titelDatei = (liste.find((s) => s.bf) || {}).bf || titelDatei;
+  if (titelDatei) k.querySelector('#zKopf').insertAdjacentHTML('afterbegin', `<img src="${bildFuerTrip({ bf: titelDatei })}" alt="">`);
+  k.querySelector('#zText').textContent = (i.text || '').split(/(?<=\.)\s/).slice(0, 2).join(' ');
+  const sw = k.querySelector('#zSw');
+  sw.innerHTML = liste.length ? sehenswertListe(liste, 12) : `<p class="klein">${esc(t('Keine Vorschläge gefunden – du kannst Orte danach selbst hinzufügen.'))}</p>`;
+  const ok = k.querySelector('#zOk');
+  const zaehlen = () => { const n = sw.querySelectorAll('.sw-haken:checked').length; ok.disabled = false; ok.textContent = n ? t('Reise mit {n} Orten anlegen', { n }) : t('Reise anlegen'); };
+  sw.addEventListener('change', () => { sound.tick(); fuehlen('leicht'); zaehlen(); });
+  zaehlen();
+  ok.onclick = async () => {
+    const auswahl = [...sw.querySelectorAll('.sw-haken:checked')].map((c) => liste[+c.dataset.sw]);
+    const von = k.querySelector('#zVon').value || null, bis = k.querySelector('#zBis').value || null;
+    modalSchliessen();
+    const id = await tripAnlegen(ziel.n, flagge(ziel.cc) || '🗺️');
+    const v = ansicht(id);
+    schreiben(id, 'meta', { ...v.meta, ort: { lat: ziel.lat, lng: ziel.lng }, radius: ziel.radius, cc: ziel.cc, land: ziel.land, bf: titelDatei || null, von, bis: von ? (bis || von) : null });
+    auswahl.forEach((s, n) => schreiben(id, 'p:' + zufall(8), { n: s.n, nl: s.nl, k: s.k, lat: s.lat, lng: s.lng, wd: s.wd, bf: s.bf, o: n }));
+    if (von && auswahl.length) setTimeout(automatischPlanen, 300);
+    sound.erfolg(); fuehlen('erfolg'); konfetti();
+    setTimeout(() => erfolg({
+      icon: 'funken', titel: t('Auf nach {ziel}!', { ziel: ziel.n }),
+      text: esc(auswahl.length ? t('{n} Sehenswürdigkeiten sind auf der Karte – jede mit Audio-Guide. Hol jetzt deine Mitreisenden dazu.', { n: auswahl.length }) : t('Füg jetzt deine ersten Orte hinzu.')),
+      knopf: t('Mitreisende einladen'), aktion: () => einladenDialog(), zweit: t('Später'),
+    }), 600);
+  };
+}
+
+// Weitere Sehenswürdigkeiten zu einer bestehenden Reise
+async function entdeckenDialog() {
+  const v = ansicht(aktuell);
+  const mitte = tripMitte(v);
+  if (!mitte) return toast(t('Leg zuerst einen Ort an oder wähle ein Ziel'));
+  const k = modal(`
+    <h2>${esc(t('Sehenswürdigkeiten entdecken'))}</h2>
+    <p class="lead">${esc(t('Die bekanntesten Orte rund um {ziel} – sortiert danach, wie berühmt sie weltweit sind.', { ziel: v.meta.n }))}</p>
+    <div id="eSw"><div class="leer-hinweis">${icon('sync', 26)}${esc(t('Suche die bekanntesten Orte …'))}</div></div>
+    <div class="knopf-reihe" style="position:sticky;bottom:0"><button class="knopf voll akzent" id="eOk" disabled>${esc(t('Hinzufügen'))}</button></div>`);
+  let liste = [];
+  try { liste = await sehenswuerdigkeiten(mitte.lat, mitte.lng, v.meta.radius || 12, ich.sprache); } catch {}
+  if (!k.isConnected) return;
+  // Schon vorhandene Orte weglassen (gleiche Wikidata-ID oder sehr nah mit ähnlichem Namen)
+  liste = liste.filter((s) => !v.orte.some((o) => o.wd === s.wd || (o.lat != null && abstand(o, s) < 150)));
+  const sw = k.querySelector('#eSw');
+  sw.innerHTML = liste.length ? sehenswertListe(liste, 0) : `<p class="klein">${esc(navigator.onLine ? t('Ihr habt die bekanntesten Orte schon alle!') : t('Dafür braucht es Internet.'))}</p>`;
+  const ok = k.querySelector('#eOk');
+  sw.addEventListener('change', () => { const n = sw.querySelectorAll('.sw-haken:checked').length; ok.disabled = !n; ok.textContent = n ? t('{n} Orte hinzufügen', { n }) : t('Hinzufügen'); sound.tick(); });
+  ok.onclick = () => {
+    let o = naechsteOrdnung();
+    const auswahl = [...sw.querySelectorAll('.sw-haken:checked')].map((c) => liste[+c.dataset.sw]);
+    auswahl.forEach((s) => schreiben(aktuell, 'p:' + zufall(8), { n: s.n, nl: s.nl, k: s.k, lat: s.lat, lng: s.lng, wd: s.wd, bf: s.bf, o: o++ }));
+    modalSchliessen(); sound.plopp(); fuehlen('mittel');
+    toast(t('{n} Orte hinzugefügt', { n: auswahl.length }));
+  };
+}
+
+// ---------- Audio-Guide ----------
+const guides = new Map(); // Orts-ID -> { status: 'laedt' | 'fertig' | 'fehlt', guide }
+const sprecher = new Sprecher(() => guideAnzeigen());
+
+function guideFuer(o) {
+  const schl = o.id + '.' + ich.sprache;
+  let z = guides.get(schl);
+  if (!z) {
+    z = { status: 'laedt' };
+    guides.set(schl, z);
+    guideLaden({ ...o, wiki: o.wiki || wikiFuerOrt(o) }, ich.sprache, t)
+      .then((g) => { z.status = g ? 'fertig' : 'fehlt'; z.guide = g; })
+      .catch(() => { z.status = navigator.onLine ? 'fehlt' : 'offline'; guides.delete(schl); })
+      .finally(() => neuZeichnen());
+  }
+  return z;
+}
+
+const KAPITEL_NAME = { ueberblick: 'Überblick', geschichte: 'Geschichte', architektur: 'Architektur', legenden: 'Legenden', fakten: 'Fun Facts' };
+
+function guideHtml(o) {
+  if (!('speechSynthesis' in window)) return '';
+  const z = guideFuer(o);
+  if (z.status === 'laedt') return `<div class="guide glas"><div class="guide-kopf"><span class="guide-ico">${icon('kopfhoerer', 22)}</span><span><b>${esc(t('Audio-Guide'))}</b><small>${esc(t('Wird vorbereitet …'))}</small></span></div></div>`;
+  if (z.status !== 'fertig') return `<div class="guide glas leer"><div class="guide-kopf"><span class="guide-ico aus">${icon('kopfhoerer', 22)}</span><span><b>${esc(t('Audio-Guide'))}</b><small>${esc(z.status === 'offline' ? t('Braucht beim ersten Mal Internet.') : t('Zu diesem Ort gibt es noch keine Geschichte.'))}</small></span></div></div>`;
+  const g = z.guide;
+  const aktiv = sprecher.ortId === o.id;
+  const laeuft = aktiv && sprecher.laeuft;
+  const i = aktiv ? sprecher.i : -1;
+  let n = 0;
+  const kapitel = g.kapitel.map((k) => `<div class="guide-kapitel" data-kap="${k.id}"><div class="abschnitt">${esc(t(KAPITEL_NAME[k.id]))}</div><p>${k.saetze.map((s) => `<span class="satz ${n === i ? 'an' : ''}" data-satz="${n++}">${esc(s)}</span>`).join(' ')}</p></div>`).join('');
+  return `<div class="guide glas ${laeuft ? 'laeuft' : ''}" data-guide="${esc(o.id)}">
+    <div class="guide-kopf">
+      <button class="guide-play" data-aktion="guideplay" data-id="${esc(o.id)}" aria-label="${esc(laeuft ? t('Pause') : t('Abspielen'))}">${icon(laeuft ? 'pauseIc' : 'play', 24, 2.4)}</button>
+      <span style="min-width:0;flex:1"><b>${esc(t('Audio-Guide'))}</b><small>${esc(t('ca. {n} Min', { n: Math.max(1, Math.round(g.sekunden / 60 / sprecher.tempo)) }))}${g.fremdsprache ? ' · ' + esc(t('nur auf Englisch verfügbar')) : ''}</small></span>
+      <button class="chip" data-aktion="guidetempo">${String(sprecher.tempo).replace('.', ',')}×</button>
+    </div>
+    <div class="guide-wellen" aria-hidden="true">${'<i></i>'.repeat(24)}</div>
+    <div class="guide-steuer">
+      <button class="kreisknopf" data-aktion="guidezurueck" aria-label="${esc(t('Zurück'))}">${icon('zurueck', 18, 2.4)}</button>
+      <div class="guide-chips">${g.kapitel.map((k) => `<button class="chip ${aktiv && sprecher.liste[i] && sprecher.liste[i].kapitel === k.id ? 'akzent' : ''}" data-guidekap="${k.id}" data-id="${esc(o.id)}">${esc(t(KAPITEL_NAME[k.id]))}</button>`).join('')}</div>
+      <button class="kreisknopf" data-aktion="guidevor" aria-label="${esc(t('Weiter'))}">${pfeilRechts(18)}</button>
+    </div>
+    <div class="guide-text">${kapitel}</div>
+    <a class="klein guide-quelle" href="${esc(g.quelle)}" target="_blank" rel="noopener">${esc(t('Text: Wikipedia ({titel}), CC BY-SA', { titel: g.titel }))}</a>
+  </div>`;
+}
+
+// Zustand des Vorlesens in der sichtbaren Seite und im Mini-Player nachziehen, ohne die Seite neu zu bauen
+function guideAnzeigen() {
+  document.querySelectorAll('.satz.an').forEach((s) => s.classList.remove('an'));
+  const g = document.querySelector(`.guide[data-guide="${CSS.escape(sprecher.ortId || '')}"]`);
+  if (g) {
+    g.classList.toggle('laeuft', sprecher.laeuft);
+    const s = g.querySelector(`[data-satz="${sprecher.i}"]`);
+    if (s) { s.classList.add('an'); if (sprecher.laeuft) s.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    const p = g.querySelector('.guide-play');
+    if (p) p.innerHTML = icon(sprecher.laeuft ? 'pauseIc' : 'play', 24, 2.4);
+    const kap = sprecher.liste[sprecher.i] && sprecher.liste[sprecher.i].kapitel;
+    g.querySelectorAll('[data-guidekap]').forEach((c) => c.classList.toggle('akzent', c.dataset.guidekap === kap));
+  }
+  miniPlayer();
+}
+
+function miniPlayer() {
+  let el = $('#miniplayer');
+  const v = ansicht(aktuell);
+  const o = v && sprecher.ortId && v.orte.find((x) => x.id === sprecher.ortId);
+  const st = ui.stapel[ui.tab];
+  const aufSeite = st[st.length - 1].s === 'ort' && st[st.length - 1].ort === sprecher.ortId;
+  if (!o || (!sprecher.laeuft && !sprecher.i) || aufSeite) { if (el) el.hidden = true; return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'miniplayer'; el.className = 'miniplayer glas-dicht';
+    document.body.appendChild(el);
+    el.onclick = (e) => {
+      if (e.target.closest('[data-mini="play"]')) { sprecher.umschalten(); return; }
+      if (e.target.closest('[data-mini="zu"]')) { sprecher.stop(); sprecher.i = 0; miniPlayer(); return; }
+      ortOeffnen(sprecher.ortId);
+    };
+  }
+  el.hidden = false;
+  const kap = sprecher.liste[sprecher.i] ? t(KAPITEL_NAME[sprecher.liste[sprecher.i].kapitel]) : '';
+  el.innerHTML = `${ortBild(o, false)}<span class="mp-text"><b>${esc(o.n)}</b><small>${esc(t('Audio-Guide'))} · ${esc(kap)}</small></span>
+    <button class="kreisknopf" data-mini="play" aria-label="${esc(t('Abspielen'))}">${icon(sprecher.laeuft ? 'pauseIc' : 'play', 20, 2.4)}</button>
+    <button class="kreisknopf" data-mini="zu" aria-label="${esc(t('Schließen'))}">${icon('x', 16, 2.4)}</button>`;
+}
+
+function guideStarten(id, kapitel) {
+  const v = ansicht(aktuell);
+  const o = v.orte.find((x) => x.id === id);
+  const z = o && guides.get(id + '.' + ich.sprache);
+  if (!z || !z.guide) return;
+  if (sprecher.ortId !== id || sprecher.guide !== z.guide) sprecher.laden(id, z.guide);
+  if (kapitel) sprecher.kapitel(kapitel); else sprecher.umschalten();
+  fuehlen('leicht');
+}
+
+// Alle Guides einer Reise vorab laden, damit sie offline funktionieren
+async function guidesOfflineLaden(knopf) {
+  const v = ansicht(aktuell);
+  const orte = v.orte.filter((o) => o.lat != null || o.wd);
+  let n = 0;
+  for (const o of orte) {
+    knopf.textContent = t('Lade Audio-Guides … {n}/{m}', { n: ++n, m: orte.length });
+    const z = guideFuer(o);
+    for (let i = 0; i < 40 && z.status === 'laedt'; i++) await new Promise((r) => setTimeout(r, 250));
+  }
+  const fertig = orte.filter((o) => (guides.get(o.id + '.' + ich.sprache) || {}).status === 'fertig').length;
+  knopf.textContent = t('{n} Audio-Guides offline gespeichert ✓', { n: fertig });
+  sound.erfolg();
 }
 
 function tripMenue() {
@@ -1918,8 +2160,14 @@ function syncDialog() {
     <div class="info-zeile"><span>${esc(t('Offline-Karte Bangkok'))}</span><span>${esc(offlineKarte ? t('gespeichert ✓') : t('nicht gespeichert'))}</span></div>
     <div class="info-zeile"><span>${esc(t('Dabei'))}</span><span>${mitglieder || '–'}</span></div>
     <p class="klein" style="margin-top:14px">${esc(t('Eure Daten liegen Ende-zu-Ende-verschlüsselt auf mehreren öffentlichen Nostr-Relays. Ohne den Code kann niemand sie lesen.'))}</p>
-    ${offlineKarte ? '' : `<div class="knopf-reihe"><button class="knopf voll akzent" id="sKarte">${icon('wolke', 20)} ${esc(t('Offline-Karte laden ({mb} MB)', { mb: REGION.mb }))}</button></div>`}`,
-  (k) => { const b = k.querySelector('#sKarte'); if (b) b.onclick = () => { modalSchliessen(); karteHerunterladen(); }; });
+    <div class="knopf-reihe">
+      ${offlineKarte ? '' : `<button class="knopf voll akzent" id="sKarte">${icon('wolke', 20)} ${esc(t('Offline-Karte laden ({mb} MB)', { mb: REGION.mb }))}</button>`}
+      ${'speechSynthesis' in window && v ? `<button class="knopf voll" id="sGuides">${icon('kopfhoerer', 20)} ${esc(t('Audio-Guides offline speichern'))}</button>` : ''}
+    </div>`,
+  (k) => {
+    const b = k.querySelector('#sKarte'); if (b) b.onclick = () => { modalSchliessen(); karteHerunterladen(); };
+    const g = k.querySelector('#sGuides'); if (g) g.onclick = () => { g.disabled = true; guidesOfflineLaden(g); };
+  });
 }
 
 async function nachweiseDialog() {
@@ -2132,7 +2380,7 @@ function ortEditor(o, ziel) {
     const notizNeu = k.querySelector('#oNotiz').value.trim().slice(0, 1000);
     const nameSpeichern = o.orig && n === o.n ? o.orig : n.slice(0, 80);
     const notizSpeichern = o.id && notizNeu === (o.notiz || '').trim() ? (o.origNotiz ?? notizNeu) : notizNeu;
-    schreiben(aktuell, 'p:' + id, { ...alt, n: nameSpeichern, k: katWahl, notiz: notizSpeichern, lat: o.lat ?? null, lng: o.lng ?? null, o: o.id ? alt.o : naechsteOrdnung() });
+    schreiben(aktuell, 'p:' + id, { ...alt, n: nameSpeichern, nl: nameSpeichern === alt.n ? alt.nl : null, k: katWahl, notiz: notizSpeichern, lat: o.lat ?? null, lng: o.lng ?? null, o: o.id ? alt.o : naechsteOrdnung() });
     modalSchliessen();
     sound.plopp(); fuehlen('mittel');
     toast(neu ? t('„{ort}“ hinzugefügt', { ort: n }) : t('Gespeichert'));

@@ -1,7 +1,7 @@
 // App-Hülle offline verfügbar machen. Die große Kartendatei lädt die App selbst in den Cache "sp-karte".
-const VERSION = 'sp-v11'; // bei jeder Änderung hochzählen, sonst bleiben installierte Handys auf altem Stand
+const VERSION = 'sp-v12'; // bei jeder Änderung hochzählen, sonst bleiben installierte Handys auf altem Stand
 const HUELLE = [
-  './', 'index.html', 'app.css', 'app.js', 'sync.js', 'vorlagen.js', 'icons.js', 'feedback.js', 'i18n.js', 'onboarding.js', 'planer.js', 'tagebuch.js', 'hinweise.js', 'rueckblick.js', 'route.js', 'manifest.webmanifest', 'bilder/nachweise.json',
+  './', 'index.html', 'app.css', 'app.js', 'sync.js', 'vorlagen.js', 'icons.js', 'feedback.js', 'i18n.js', 'onboarding.js', 'planer.js', 'tagebuch.js', 'hinweise.js', 'rueckblick.js', 'route.js', 'ziele.js', 'audioguide.js', 'manifest.webmanifest', 'bilder/nachweise.json',
   'vendor/maplibre-gl.js', 'vendor/maplibre-gl.css', 'vendor/pmtiles.js', 'vendor/basemaps.js', 'vendor/nostr.bundle.js', 'vendor/qrcode.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'karte/sprites/dark.json', 'karte/sprites/dark.png', 'karte/sprites/dark@2x.json', 'karte/sprites/dark@2x.png',
@@ -23,6 +23,15 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
+  // Fotos von Wikimedia (Ziele, Sehenswürdigkeiten): einmal angesehen, dann auch offline da
+  if (e.request.method === 'GET' && /(^|\.)wikimedia\.org$/.test(url.hostname) && e.request.destination === 'image') {
+    e.respondWith(caches.open('sp-bilder').then(async (c) => {
+      const treffer = await c.match(e.request);
+      if (treffer) return treffer;
+      try { const r = await fetch(e.request); if (r.ok || r.type === 'opaque') c.put(e.request, r.clone()); return r; } catch { return new Response('', { status: 504 }); }
+    }));
+    return;
+  }
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.endsWith('.pmtiles')) return; // Bereichsanfragen direkt ans Netz
   // Erst Cache, im Hintergrund aktualisieren

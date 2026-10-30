@@ -371,6 +371,7 @@ label.feld > span { display: block; font-size: 12.5px; font-weight: 650; color: 
 .eingabe::placeholder { color: var(--text-3); }
 textarea.eingabe { height: auto; min-height: 96px; padding: 13px 16px; resize: vertical; line-height: 1.4; }
 .eingabe:focus { border-color: var(--akzent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--akzent) 20%, transparent); }
+input[type=date].eingabe { min-width: 0; padding: 0 10px; font-size: 15px; }
 .code-eingabe { font-size: 24px; font-weight: 700; letter-spacing: .14em; text-align: center; text-transform: uppercase; font-variant-numeric: tabular-nums; }
 .treffer { list-style: none; margin: 10px 0 0; padding: 0; }
 .treffer li button { width: 100%; text-align: left; padding: 10px 4px; border-bottom: 1px solid var(--rand); display: flex; gap: 12px; align-items: center; }
@@ -575,6 +576,61 @@ select.eingabe { appearance: none; -webkit-appearance: none; }
 .karte-tage::-webkit-scrollbar { display: none; }
 .karte-tage .chip { flex: none; color: var(--text); }
 .karte-tage .chip.an { background: var(--akzent-verlauf); color: #fff; border-color: transparent; }
+
+/* ---------- Ziel wählen & Sehenswürdigkeiten ---------- */
+.ziel-kopf { position: relative; height: 190px; margin: -26px -20px 14px; border-radius: 34px 34px 0 0; overflow: hidden; color: #fff; }
+.ziel-kopf img, .ziel-kopf .cover-verlauf { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; font-size: 80px; }
+.ziel-kopf::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .1), rgba(0, 0, 0, .6)); }
+.ziel-titel { position: absolute; z-index: 1; left: 20px; right: 60px; bottom: 16px; }
+.ziel-titel h2 { color: #fff; font-size: 32px; margin: 8px 0 0; padding: 0; text-shadow: 0 2px 14px rgba(0, 0, 0, .4); }
+.sw-zeile { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 18px; margin-bottom: 6px; background: var(--flaeche); border: 1px solid var(--rand); cursor: pointer; transition: background .2s, border-color .2s; }
+.sw-zeile img, .sw-zeile .sw-ico { width: 52px; height: 52px; border-radius: 14px; object-fit: cover; flex: none; display: grid; place-items: center; color: #fff; background: var(--flaeche-2); }
+.sw-zeile b { display: block; font-size: 15px; font-weight: 650; }
+.sw-zeile small { display: block; font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55vw; }
+.sw-zeile > span:nth-of-type(1) { flex: 1; }
+.sw-haken { position: absolute; opacity: 0; pointer-events: none; }
+.sw-mark { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--flaeche-3); display: grid; place-items: center; color: transparent; flex: none; transition: background .25s, border-color .25s, transform .35s var(--federnd); }
+.sw-zeile:has(.sw-haken:checked) { background: color-mix(in srgb, var(--akzent) 10%, var(--flaeche)); border-color: color-mix(in srgb, var(--akzent) 45%, transparent); }
+.sw-zeile:has(.sw-haken:checked) .sw-mark { background: var(--akzent); border-color: var(--akzent); color: #fff; transform: scale(1.06); }
+.knopf.entdecken { margin-bottom: 12px; height: 50px; }
+.knopf.entdecken .ic { color: var(--akzent); }
+
+/* ---------- Audio-Guide ---------- */
+.guide { border-radius: 26px; padding: 14px; margin-bottom: 12px; }
+.guide-kopf { display: flex; align-items: center; gap: 12px; }
+.guide-kopf b { display: block; font-size: 16px; }
+.guide-kopf small { color: var(--text-3); font-size: 13px; }
+.guide-ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--regenbogen); flex: none; }
+.guide-ico.aus { background: var(--flaeche-3); color: var(--text-3); }
+.guide.leer { opacity: .85; }
+.guide-play { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--regenbogen); box-shadow: 0 8px 24px rgba(191, 90, 242, .35); flex: none; transition: transform .3s var(--federnd); }
+.guide-play:active { transform: scale(.9); }
+.guide-wellen { display: flex; align-items: center; justify-content: space-between; gap: 3px; height: 26px; margin: 12px 4px 8px; }
+.guide-wellen i { flex: 1; height: 20%; border-radius: 2px; background: var(--flaeche-3); transition: background .3s; }
+.guide.laeuft .guide-wellen i { background: var(--akzent); animation: welle 1s ease-in-out infinite alternate; }
+.guide-wellen i:nth-child(3n) { animation-delay: -.3s !important; }
+.guide-wellen i:nth-child(3n+1) { animation-delay: -.6s !important; }
+.guide-wellen i:nth-child(4n) { animation-duration: .7s !important; }
+@keyframes welle { from { height: 15%; } to { height: 100%; } }
+.guide-steuer { display: flex; align-items: center; gap: 6px; }
+.guide-steuer .kreisknopf { width: 36px; height: 36px; background: var(--flaeche-2); flex: none; }
+.guide-chips { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.guide-chips::-webkit-scrollbar { display: none; }
+.guide-chips .chip { flex: none; height: 30px; }
+.guide-text { max-height: 230px; overflow-y: auto; margin-top: 10px; padding-right: 4px; scrollbar-width: thin; mask-image: linear-gradient(180deg, transparent, #000 12px, #000 calc(100% - 18px), transparent); -webkit-mask-image: linear-gradient(180deg, transparent, #000 12px, #000 calc(100% - 18px), transparent); }
+.guide-kapitel .abschnitt { margin: 12px 0 6px; }
+.guide-kapitel p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-3); }
+.satz { border-radius: 6px; transition: color .3s, background .3s; cursor: pointer; }
+.satz.an { color: var(--text); background: color-mix(in srgb, var(--akzent) 16%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--akzent) 16%, transparent); }
+.guide-quelle { display: block; margin-top: 8px; text-decoration: none; }
+
+.miniplayer { position: fixed; z-index: 9; left: 50%; transform: translateX(-50%); bottom: calc(var(--sicher-unten) + var(--tabbar) + 18px); width: min(360px, calc(100% - 32px)); display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 8px; border-radius: 22px; cursor: pointer; animation: hochgleiten .45s var(--feder) both; }
+.miniplayer .ort-bild, .miniplayer .ort-ico { width: 40px; height: 40px; border-radius: 12px; }
+.miniplayer .mp-text { flex: 1; min-width: 0; }
+.miniplayer b { display: block; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.miniplayer small { color: var(--text-3); font-size: 12px; }
+.miniplayer .kreisknopf { width: 38px; height: 38px; background: var(--flaeche-2); flex: none; }
+body.auf-karte .miniplayer { bottom: calc(var(--sicher-unten) + var(--tabbar) + 130px); }
 
 /* ---------- Route zwischen zwei Orten ---------- */
 .route-karte { position: absolute; left: 10px; right: 10px; bottom: calc(var(--sicher-unten) + var(--tabbar) + 20px); max-height: calc(100dvh - var(--sicher-oben) - var(--tabbar) - 150px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 12px; border-radius: 28px; animation: hochgleiten .45s var(--feder) both; }

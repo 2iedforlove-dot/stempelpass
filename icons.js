@@ -85,7 +85,9 @@ export const PFADE = {
   kreisel: 'M21 12a9 9 0 1 1-9-9 M21 3v6h-6',
   ziel: 'M4 22V4 M4 4h13l-2.5 4L17 12H4',
   tauschen: 'M7 16V4 M3 8l4-4 4 4 M17 8v12 M21 16l-4 4-4-4',
-  homescreen: 'M5 2h14a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M12 8v8 M8 12h8',
+  kopfhoerer: 'M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3',
+  pauseIc: 'M7 4h3v16H7z M14 4h3v16h-3z',
+  homescreen:'M5 2h14a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M12 8v8 M8 12h8',
   iosTeilen: 'M12 3v12 M8 7l4-4 4 4 M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8',
 };
 

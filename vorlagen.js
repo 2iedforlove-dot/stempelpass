@@ -51,10 +51,23 @@ export const BANGKOK = {
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const NACH_NAME = Object.fromEntries(BANGKOK.orte.filter((o) => o[5]).map((o) => [norm(o[0]), o[5]]));
 // groesse: 'orte' (groß), 'klein' (Listen) oder 'hg' (vorab weichgezeichneter Hintergrund)
+const BREITE = { titel: 1280, orte: 800, klein: 200, hg: 48 };
+const commons = (datei, groesse) => `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(datei)}?width=${BREITE[groesse] || 800}`;
 export function bildFuerOrt(o, groesse = 'orte') {
   const k = o.b || NACH_NAME[norm(o.orig || o.n)];
-  return k ? `bilder/${groesse}/${k}.webp` : null;
+  if (k) return `bilder/${groesse}/${k}.webp`;
+  return o.bf ? commons(o.bf, groesse) : null;
 }
+
+// Wikipedia-Artikel (englisch) der Vorlagen-Orte, damit der Audio-Guide sicher den richtigen findet
+const WIKI = {
+  chatuchakweekendmarket: 'Chatuchak Weekend Market', watarun: 'Wat Arun', grandpalace: 'Grand Palace', watpho: 'Wat Pho',
+  benjakittipark: 'Benchakitti Park', lumpinipark: 'Lumphini Park', ancientcity: 'Ancient Siam', massage: 'Thai massage',
+  chaophrayabootsfahrt: 'Chao Phraya River', floatingmarket: 'Damnoen Saduak Floating Market', foodtour: 'Yaowarat Road',
+  talatnoi: 'Talat Noi', iconsiam: 'Iconsiam', mahanakhonskywalk: 'King Power Mahanakhon', bangkrachao: 'Bang Krachao',
+  ayutthaya: 'Ayutthaya Historical Park', goldenmount: 'Wat Saket',
+};
+export const wikiFuerOrt = (o) => WIKI[norm(o.orig || o.n)] || null;
 // Beste Zeit für einen Ort: 'wochenende' (nur Sa/So offen), 'abend' (Sonnenuntergang), 'frueh' (morgens hin), 'drinnen' (gut bei Regen)
 const ZEITEN = {
   chatuchakweekendmarket: 'wochenende', watarun: 'abend', mahanakhonskywalk: 'abend', rooftopbar: 'abend', foodtour: 'abend',
@@ -127,6 +140,7 @@ export function uebersetzterOrt(n, notiz, sprache) {
 
 export function bildFuerTrip(meta, groesse = 'orte') {
   if (!meta) return null;
-  const k = meta.b || (norm(meta.n).includes('bangkok') ? BANGKOK.bild : null);
-  return k ? `bilder/${groesse}/${k}.webp` : null;
+  const k = meta.b || (norm(meta.n).includes('bangkok') && !meta.bf ? BANGKOK.bild : null);
+  if (k) return `bilder/${groesse}/${k}.webp`;
+  return meta.bf ? commons(meta.bf, groesse === 'orte' ? 'titel' : groesse) : null;
 }
