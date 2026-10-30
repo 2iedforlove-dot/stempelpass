@@ -75,6 +75,22 @@ export const sound = {
   zurueck() { if (!an) return; ton({ f: 523.3, dauer: 0.12, laut: 0.12, typ: 'triangle' }); ton({ f: 784, start: 0.08, dauer: 0.18, laut: 0.12, typ: 'triangle' }); },
   // weiches Öffnen von Dialogen
   auf() { if (!an) return; rauschen({ dauer: 0.16, laut: 0.05, frequenz: 900, q: 0.4 }); ton({ f: 300, f2: 420, dauer: 0.12, laut: 0.04 }); },
+  // Stempi wird angetippt: kurzes "Boing" wie ein Gummispielzeug
+  quietsch() { if (!an) return; ton({ f: 480, f2: 1020, dauer: 0.13, laut: 0.16, typ: 'sine' }); ton({ f: 1020, f2: 760, start: 0.11, dauer: 0.12, laut: 0.07, typ: 'triangle' }); },
+  // Seltener Stempel: Glöckchen-Schimmer, bei Gold heller und länger
+  selten(gold) {
+    if (!an) return;
+    const noten = gold ? [1318.5, 1568, 1975.5, 2637, 3136] : [1174.7, 1568, 2349.3];
+    noten.forEach((f, i) => ton({ f, typ: 'sine', start: 0.05 + i * 0.07, dauer: 0.9, laut: gold ? 0.07 : 0.06, anschlag: 0.004 }));
+    for (let i = 0; i < (gold ? 10 : 5); i++) ton({ f: 2600 + Math.random() * 2200, start: 0.3 + i * 0.05, dauer: 0.2, laut: 0.02 });
+  },
+  // Neue Reisepass-Stufe: kleine Fanfare (Quarte hoch, dann Dur-Akkord)
+  stufe() {
+    if (!an) return;
+    [[392, 0], [523.3, 0.14], [659.3, 0.28], [784, 0.42]].forEach(([f, s]) => ton({ f, typ: 'triangle', start: s, dauer: 0.35, laut: 0.12, anschlag: 0.01 }));
+    [523.3, 659.3, 784, 1046.5].forEach((f) => ton({ f, typ: 'triangle', start: 0.6, dauer: 1.3, laut: 0.08, anschlag: 0.02 }));
+    for (let i = 0; i < 8; i++) ton({ f: 2200 + Math.random() * 2000, start: 0.7 + i * 0.07, dauer: 0.3, laut: 0.022 });
+  },
   // Kamera-Auslöser fürs Tagebuch
   foto() { if (!an) return; rauschen({ dauer: 0.03, laut: 0.25, frequenz: 3000, q: 0.7 }); rauschen({ start: 0.07, dauer: 0.05, laut: 0.18, frequenz: 1800, q: 0.7 }); },
   // Leise Akkord-Flächen für den Rückblick (Cmaj7 – Am7 – Fmaj7 – G6), mit Glöckchen

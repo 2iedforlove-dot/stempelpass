@@ -1,7 +1,11 @@
 import { Sync, deriveKeys, newCode, normCode } from './sync.js';
 import { KATEGORIEN, BANGKOK, bildFuerOrt, bildFuerTrip, zeitFuerOrt, uebersetzterOrt, wikiFuerOrt } from './vorlagen.js';
 import { zieleSuchen, zielInfo, sehenswuerdigkeiten } from './ziele.js';
-import { guideLaden, Sprecher } from './audioguide.js';
+import { guideLaden, Sprecher, stimmenFuer, stimmQualitaet } from './audioguide.js';
+import { stempi, stimmung, stempiLeben } from './maskottchen.js';
+import { konfetti as partikelKonfetti, spritzer, glitzer } from './partikel.js';
+import { stufe, stufenName, seltenheit, bestenliste } from './belohnung.js';
+import { vorliebenHtml, vorliebenKlick, nachInteressen, passtZu, interessenText, orteProTag } from './vorlieben.js';
 import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
 import { fotoVerkleinern, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl } from './tagebuch.js';
@@ -48,12 +52,16 @@ const LS = {
 };
 
 const ich = Object.assign(
-  { id: zufall(8), name: '', farbe: FARBEN[Math.floor(Math.random() * FARBEN.length)], design: 'auto', akzent: 'orange', sprache: 'de', heimat: null, vibration: true, eingerichtet: false },
+  { id: zufall(8), name: '', farbe: FARBEN[Math.floor(Math.random() * FARBEN.length)], design: 'auto', akzent: 'orange', sprache: 'de', heimat: null, vibration: true, eingerichtet: false,
+    interessen: [], tempo: 'ausgewogen', stimmen: {}, schritte: {} },
   LS.get('sp.ich', {}),
 );
 const ichSpeichern = () => LS.set('sp.ich', ich);
 ichSpeichern();
 setzeSprache(ich.sprache);
+// Zum Testen auf Geräten mit "Bewegung reduzieren": ?bewegung=an zeigt trotzdem alle Animationen
+if (/[?&]bewegung=an\b/.test(location.search)) document.documentElement.dataset.bewegung = 'an';
+const schrittErledigt = (k) => { if (!ich.schritte[k]) { ich.schritte = { ...ich.schritte, [k]: true }; ichSpeichern(); } };
 
 const trips = new Map(); // id -> { code, keys, data }
 let aktuell = LS.get('sp.aktuell', null);
@@ -746,7 +754,7 @@ function homeHtml() {
   const hg = erst ? bildFuerTrip(erst.meta, 'hg') : null;
   const leer = !ids.length ? `
     <div class="leer-reisen glas">
-      ${scheibe({ text: 'Stempelpass • ' + t('Reisen'), inhalt: icon('pass', 34, 2), klasse: 'gestempelt', attr: 'tabindex="-1" aria-hidden="true" style="--d:150px;margin:6px auto 0"' })}
+      ${stempi({ stimmung: 'winken', groesse: 104 })}
       <h2>${esc(t('Noch keine Reise'))}</h2>
       <p>${esc(t('Leg eure Bangkok-Reise mit allen Zielen vom Zettel an – oder tritt einer Reise mit Code bei.'))}</p>
       <button class="knopf regenbogen voll" data-aktion="bangkok" style="margin-bottom:10px">🇹🇭 ${esc(t('Bangkok-Reise anlegen'))}</button>
@@ -761,7 +769,39 @@ function homeHtml() {
     <div class="knopf-paar">
       <button class="knopf glas" data-aktion="neutrip">${icon('plus', 20)} ${esc(t('Neue Reise'))}</button>
       <button class="knopf glas" data-aktion="code">${icon('code', 20)} ${esc(t('Code'))}</button>
-    </div>`;
+    </div>
+    ${checklisteHtml()}`;
+}
+
+// ---------- Erste Schritte ----------
+// Statt eines Rundgangs mit Pop-ups eine Checkliste, die bleibt, bis alles erledigt ist (Mobbin: Mural +10 % Bindung)
+function checklistePunkte() {
+  const alle = [...trips.keys()].map(ansicht).filter(Boolean);
+  return [
+    ['reise', t('Erste Reise anlegen'), t('Ziel suchen – Stempi schlägt die Top-Orte vor'), trips.size > 0, 'neutrip'],
+    ['stempel', t('Den ersten Ort abstempeln'), t('Auf den Kreis neben einem Ort tippen'), alle.some((v) => v.orte.some((o) => o.check && o.check.by === ich.id)), 'zurreise'],
+    ['einladen', t('Mitreisende einladen'), t('Per Link oder Code – alle sehen eure Stempel'), alle.some((v) => v.leute.length > 1) || !!ich.schritte.einladen, 'einladen'],
+    ['guide', t('Einen Audio-Guide anhören'), t('Stempi erzählt dir die Geschichte jedes Orts'), !!ich.schritte.guide, 'zumguide'],
+    ['app', t('Auf den Startbildschirm legen'), t('Dann startet Stempelpass wie eine echte App'), istApp || !!ich.schritte.app, 'homescreen'],
+  ];
+}
+
+function checklisteHtml() {
+  if (ich.checklisteZu) return '';
+  const punkte = checklistePunkte();
+  const fertig = punkte.filter((p) => p[3]).length;
+  if (fertig === punkte.length) {
+    if (!ich.checklisteFeier) {
+      ich.checklisteFeier = true; ichSpeichern();
+      setTimeout(() => erfolg({ stempi: 'jubel', titel: t('Erste Schritte geschafft!'), text: esc(t('Du kennst jetzt alles Wichtige. Ab hier zählt nur noch eins: stempeln!')), knopf: t('Super'), feiern: 'stufe' }), 700);
+    }
+    return '';
+  }
+  return `<div class="checkliste glas">
+    <button class="cl-zu" data-aktion="checklistezu" aria-label="${esc(t('Ausblenden'))}">${icon('x', 14, 2.4)}</button>
+    <div class="cl-kopf">${stempi({ groesse: 46 })}<span><b>${esc(t('Erste Schritte'))}</b><small>${esc(t('{e} von {n} erledigt', { e: fertig, n: punkte.length }))}</small></span></div>
+    ${punkte.map(([, a, b, ok, aktion]) => `<button class="cl-punkt ${ok ? 'fertig' : ''}" ${ok ? 'disabled' : `data-aktion="${aktion}"`}><span class="kreis">${icon('haken', 14, 3)}</span><span><b>${esc(a)}</b><small>${esc(b)}</small></span>${ok ? '' : `<span class="pfeil">${pfeilRechts(16)}</span>`}</button>`).join('')}
+  </div>`;
 }
 
 // ---------- Reise-Übersicht ----------
@@ -830,6 +870,7 @@ function reiseHtml(id) {
           <div class="zeilen"><span>${leuteHtml(v, 6)}</span><span class="sync" style="height:auto;padding:0;background:none;border:0"><i></i><span></span></span></div>
         </div>
       </div>
+      ${bestenlisteHtml(v)}
       <div class="kacheln">
         <button class="kachel glas" data-aktion="aufkarte"><span class="k-ico" style="background:#0a84ff">${icon('karteTab')}</span>${esc(t('Karte'))}</button>
         <button class="kachel glas" data-aktion="einladen"><span class="k-ico" style="background:#30c25a">${icon('leute')}</span>${esc(t('Einladen'))}</button>
@@ -842,6 +883,17 @@ function reiseHtml(id) {
       ${liste.map((o) => ortKarte(v, o)).join('')}${leer}
       ${n ? `<p class="lang-tipp">${esc(t('Lange auf einen Ort drücken zum Löschen oder Bearbeiten'))}</p>` : ''}`}
     </div>`;
+}
+
+// Sichtbarer Vergleich in der Gruppe (Strava, Peloton): wer hat in dieser Reise am meisten gestempelt?
+function bestenlisteHtml(v) {
+  const bl = bestenliste(v);
+  if (v.leute.length < 2 || !bl.length) return '';
+  const max = bl[0].n;
+  return `<div class="bestenliste glas"><h3>${icon('pokal', 17, 2.2)} ${esc(t('Wer stempelt am meisten?'))}</h3>
+    ${bl.slice(0, 6).map((p, i) => `<div class="bl-zeile"><span class="av" style="background:${esc(p.farbe)}">${i === 0 && (!bl[1] || bl[1].n < p.n) ? `<span class="krone">${icon('krone', 16, 2.2)}</span>` : ''}${esc((p.name || '?').slice(0, 1).toUpperCase())}</span>
+      <span style="min-width:0"><span class="nm">${esc(p.id === ich.id ? t('Du') : p.name)}</span><span class="spur" style="--w:${(p.n / max).toFixed(3)};--f:${esc(p.farbe)}"><i></i></span></span><b>${p.n}</b></div>`).join('')}
+  </div>`;
 }
 
 // ---------- Hinweise ----------
@@ -930,7 +982,7 @@ function automatischPlanen() {
   const start = unterkunft(v);
   // Schon gestempelte Orte behalten ihren Tag, geplant wird der Rest
   const zuPlanen = v.orte.filter((o) => !o.check).map((o) => ({ ...o, z: zeitFuerOrt(o) }));
-  const plan = autoPlan(zuPlanen, { start, tage, von: v.meta.von });
+  const plan = autoPlan(zuPlanen, { start, tage, von: v.meta.von, proTag: orteProTag(ich.tempo) });
   const tr = trips.get(aktuell);
   for (const o of zuPlanen) {
     const p = plan.get(o.id);
@@ -1199,7 +1251,10 @@ function profilHtml() {
   const mitte = v && tripMitte(v);
   const km = ich.heimat && mitte ? Math.round(abstand(ich.heimat, mitte) / 1000) : null;
   const w = v && wetter[v.id];
-  const heimat = ich.heimat ? `${flagge(ich.heimat.cc)} ${esc(ich.heimat.name)}${ich.heimat.land ? ', ' + esc(ich.heimat.land) : ''}` : esc(t('Heimatort festlegen'));
+  const heimat = ich.heimat ? `${esc(ich.heimat.name)}${ich.heimat.land ? ', ' + esc(ich.heimat.land) : ''}` : esc(t('Heimatort festlegen'));
+  const st = stufe(meine);
+  // Maschinenlesbare Zeile wie im echten Reisepass – nur Dekoration
+  const mrz = ('P<' + ((ich.heimat && ich.heimat.cc) || 'XX').toUpperCase() + '<' + (ich.name || 'REISENDE').toUpperCase().normalize('NFD').replace(/[^A-Z]/g, '') + '<<STEMPELPASS<<' + String(meine).padStart(3, '0') + 'ST' + (st.nr + 1)).padEnd(44, '<').slice(0, 44);
   const seg = (feld, werte) => {
     const i = Math.max(0, werte.findIndex(([w]) => w === ich[feld]));
     return `<div class="segmente" style="--n:${werte.length};--i:${i};background:var(--flaeche)"><span class="schieber"></span>${werte.map(([w, txt, ic]) => `<button class="${ich[feld] === w ? 'an' : ''}" data-einst="${feld}" data-wert="${w}">${ic ? icon(ic, 15, 2.2) : ''}${esc(txt)}</button>`).join('')}</div>`;
@@ -1207,14 +1262,20 @@ function profilHtml() {
   const zeile = (ic, farbe, txt, rechts, aktion) => `<button class="e-zeile" ${aktion ? `data-aktion="${aktion}"` : ''}><span class="e-ico" style="background:${farbe}">${icon(ic, 18)}</span>${esc(txt)}<span class="wert">${rechts}</span></button>`;
   return `${seiteHg(null)}
     <div class="grosstitel"><div><h1>${esc(t('Profil'))}</h1></div></div>
-    <div class="profil-karte glas">
-      ${avatarHtml()}
-      <h2>${esc(ich.name || t('Ohne Namen'))}</h2>
-      <button class="heimat" data-aktion="heimat">${icon('haus', 16)} ${heimat}</button>
-      <div class="uhren">
-        ${ich.heimat && ich.heimat.tz ? `<span class="chip">${icon('haus', 14)} ${uhrIn(ich.heimat.tz)}</span>` : ''}
-        ${w && w.tz && v.meta ? `<span class="chip">${icon('sonst', 14)} ${esc(v.meta.n)} ${uhrIn(w.tz)}</span>` : ''}
-      </div>
+    <div class="pass-karte">
+      <div class="pk-glanz"></div>
+      <div class="pk-kopf"><span>STEMPELPASS</span><span>${ich.heimat ? flagge(ich.heimat.cc) : '🌍'}</span></div>
+      <div class="pk-mitte">${avatarHtml()}
+        <div style="min-width:0"><h2>${esc(ich.name || t('Ohne Namen'))}</h2><button class="heimat" data-aktion="heimat">${icon('haus', 14)} ${heimat}</button></div>
+        ${stempi({ groesse: 54, stimmung: meine ? 'ruhe' : 'schlaeft' })}</div>
+      <div class="pk-stufe"><b>${esc(t('Stufe {n}', { n: st.nr + 1 }))} · ${esc(stufenName(st, t))}</b><span>${esc(meine === 1 ? t('1 Stempel') : t('{n} Stempel', { n: meine }))}</span></div>
+      <div class="pk-balken" style="--p:${st.anteil.toFixed(3)}"><i></i></div>
+      <div class="pk-fuss"><span>${esc(t('Noch {n} bis {name}', { n: st.fehlen, name: stufenName(st.naechste, t) }))}</span>
+        <span class="uhren">
+          ${ich.heimat && ich.heimat.tz ? `<span class="chip">${icon('haus', 13)} ${uhrIn(ich.heimat.tz)}</span>` : ''}
+          ${w && w.tz && v.meta ? `<span class="chip">${icon('sonst', 13)} ${uhrIn(w.tz)}</span>` : ''}
+        </span></div>
+      <div class="pk-mrz" aria-hidden="true">${esc(mrz)}</div>
     </div>
     <div class="statistik">
       <div class="stat glas"><b>${meine}</b><span>${esc(t('Deine Stempel'))}</span></div>
@@ -1223,8 +1284,8 @@ function profilHtml() {
     </div>
     <div class="abschnitt">${esc(t('Mein Stempelpass'))}</div>
     <div class="pass glas">
-      ${stempel.length ? `<div class="pass-raster">${stempel.map(({ o }, i) => `<button class="mini-stempel" data-pass="${esc(o.id)}" style="--f:${kat(o.k).farbe};--w:${((i * 37) % 22) - 11}deg">
-          <span class="rund">${icon(kat(o.k).id, 28, 1.8)}</span><b>${esc(o.n)}</b>${esc(new Date(o.check.at).toLocaleDateString(loc(), { day: 'numeric', month: 'short' }))}</button>`).join('')}</div>`
+      ${stempel.length ? `<div class="pass-raster">${stempel.map(({ o, v: rv }, i) => { const sel = seltenheit(rv.id, o); return `<button class="mini-stempel ${sel}" data-pass="${esc(o.id)}" style="--f:${kat(o.k).farbe};--w:${((i * 37) % 22) - 11}deg">
+          <span class="rund">${icon(kat(o.k).id, 28, 1.8)}${sel !== 'normal' ? `<span class="selten" title="${esc(sel === 'gold' ? t('Goldstempel') : t('Silberstempel'))}">✦</span>` : ''}</span><b>${esc(o.n)}</b>${esc(new Date(o.check.at).toLocaleDateString(loc(), { day: 'numeric', month: 'short' }))}</button>`; }).join('')}</div>`
         : `<div class="leer-hinweis" style="padding:14px">${esc(t('Noch keine Stempel – der erste wartet schon!'))}</div>`}
     </div>
     <div class="abschnitt">${esc(t('Einstellungen'))}</div>
@@ -1236,6 +1297,8 @@ function profilHtml() {
     <div class="gruppe glas">
       ${zeile('person', '#30c25a', t('Name & Farbe'), `${esc(ich.name)} ${pfeilRechts(16)}`, 'name')}
       ${zeile('haus', '#ff9f0a', t('Heimatort'), `${ich.heimat ? esc(ich.heimat.name) : ''} ${pfeilRechts(16)}`, 'heimat')}
+      ${zeile('funken', '#ff2d78', t('Interessen & Reisetempo'), `${(ich.interessen || []).length || ''} ${pfeilRechts(16)}`, 'vorlieben')}
+      ${'speechSynthesis' in window ? zeile('stimme', '#30b0c7', t('Stimme des Audio-Guides'), `${esc(((ich.stimmen || {})[ich.sprache] || '').replace(/^(Microsoft|Google)\s+/, '').split(/\s[-(]/)[0])} ${pfeilRechts(16)}`, 'stimme') : ''}
     </div>
     <div class="gruppe glas">
       <label class="e-zeile"><span class="e-ico" style="background:#ff2d78">${icon('ton', 18)}</span>${esc(t('Töne'))}<input type="checkbox" class="schalter" data-schalter="ton" ${tonAn() ? 'checked' : ''}></label>
@@ -1378,16 +1441,17 @@ function routeWahlDialog(welcher) {
   k.onclick = (e) => {
     const b = e.target.closest('[data-punkt]');
     if (!b) return;
-    if (b.dataset.punkt === 'ich' && !pos) ortungStarten(false);
     r[welcher] = b.dataset.punkt;
     if (welcher === 'nach') ui.kartenOrt = b.dataset.punkt;
     modalSchliessen(); sound.tick();
+    if (b.dataset.punkt === 'ich' && !pos) setTimeout(() => standortFragen(false), 300);
     setTimeout(routeBerechnen, pos || b.dataset.punkt !== 'ich' ? 0 : 1500);
   };
 }
 
 // ---------- Zum Home-Bildschirm ----------
 function homescreenDialog() {
+  schrittErledigt('app');
   if (istApp) return toast(t('Stempelpass ist schon als App installiert ✓'));
   if (installEvent) { installEvent.prompt(); installEvent.userChoice.then((c) => { if (c.outcome === 'accepted') { sound.erfolg(); toast(t('Installiert – du findest Stempelpass jetzt auf dem Startbildschirm')); } }); installEvent = null; return; }
   const codes = [...trips.values()].map((tr) => { const v = ansicht(tr.keys.id); return `${v.meta ? v.meta.n : '?'}: ${tr.code}`; }).join('\n');
@@ -1405,10 +1469,16 @@ function homescreenDialog() {
 }
 
 // ---------- Abstempeln ----------
-function stempeln(id) {
+function stempeln(id, knopf) {
   const v = ansicht(aktuell);
   const o = v.orte.find((x) => x.id === id);
   if (!o) return;
+  if (!o.check && knopf) {
+    // Tintenspritzer genau dort, wo der Stempel aufs Papier trifft
+    const r = knopf.getBoundingClientRect();
+    setTimeout(() => spritzer(r.left + r.width / 2, r.top + r.height / 2, akzentFarbe()), 60);
+  }
+  if (!o.check) guideFuer(o); // Fun Facts für den Erfolgsscreen schon mal holen (meist aus dem Zwischenspeicher)
   if (o.check) {
     const alt = o.check;
     schreiben(aktuell, 'c:' + id, { ok: false, by: ich.id, at: Date.now() });
@@ -1439,41 +1509,72 @@ function stempelErfolg(id, vorher) {
   const von = o.lat != null ? o : pos;
   const offen = v.orte.filter((x) => !x.check && x.lat != null);
   const naechster = von && offen.length ? offen.map((x) => [x, abstand(von, x)]).sort((a, b) => a[1] - b[1])[0] : null;
+  // Belohnungen: seltener Stempel (Überraschung), neue Stufe (endloser Fortschritt), Führung in der Gruppe (Vergleich)
+  const sel = seltenheit(aktuell, o);
+  const meine = meineStempel();
+  const s0 = stufe(meine - 1), s1 = stufe(meine);
+  const aufstieg = s1.nr > s0.nr;
+  const bl = bestenliste(v);
+  const fuehrt = v.leute.length > 1 && bl.length > 1 && bl[0].id === ich.id && bl[0].n - bl[1].n === 1;
+  const fakt = fundstueck(o);
+  const extra = (fuehrt ? `<div class="fuehrung">${icon('krone', 18, 2.2)} ${esc(t('Du führst jetzt in eurer Gruppe!'))}</div>` : '')
+    + (fakt ? `<div class="fundstueck">${icon('funken', 18, 2)}<span><b>${esc(t('Wusstest du?'))}</b>${esc(fakt)}</span></div>` : '');
+  const titel = aufstieg ? t('Neue Stufe: {name}!', { name: stufenName(s1, t) })
+    : marke ? t(marke[1]) : sel === 'gold' ? t('Wow, ein Goldstempel!') : sel === 'silber' ? t('Ein Silberstempel!') : t('Gestempelt!');
   erfolg({
-    icon: marke ? marke[2] : 'haken',
-    titel: t(marke ? marke[1] : 'Gestempelt!'),
-    text: fertig ? esc(t('Alle {n} Orte von „{reise}“ – was für eine Reise!', { n, reise: v.meta.n })) : esc(t('{ort} · {e} von {n} geschafft, noch {rest} offen.', { ort: o.n, e, n, rest: n - e })),
+    kopf: aufstieg ? `<div class="stufe-kopf">${stempi({ stimmung: 'jubel', groesse: 82 })}<div class="stufe-abzeichen">${s1.nr + 1}<small>${esc(t('STUFE'))}</small></div></div>` : '',
+    stempi: aufstieg ? null : marke || sel === 'gold' ? 'jubel' : sel === 'silber' ? 'staunen' : 'freude',
+    selten: sel,
+    titel,
+    text: aufstieg ? esc(t('{ort} war dein {n}. Stempel. Als Nächstes: {name} ab {ab} Stempeln.', { ort: o.n, n: meine, name: stufenName(s1.naechste, t), ab: s1.naechste.ab }))
+      : fertig ? esc(t('Alle {n} Orte von „{reise}“ – was für eine Reise!', { n, reise: v.meta.n })) : esc(t('{ort} · {e} von {n} geschafft, noch {rest} offen.', { ort: o.n, e, n, rest: n - e })),
+    extra,
     fortschritt: { von: vorher / n, auf: e / n, links: t('{e} gestempelt', { e }), rechts: `${Math.round((e / n) * 100)} %` },
-    vorschlag: !fertig && naechster ? { o: naechster[0], weit: naechster[1] } : null,
+    vorschlag: !fertig && naechster && !fakt ? { o: naechster[0], weit: naechster[1] } : null,
     knopf: fertig ? t('Rückblick ansehen') : t('Weiter'),
     aktion: fertig ? rueckblickStarten : null,
     zweit: t('📷 Foto dazu'),
     zweitAktion: () => eintragDialog(id, true),
-    feiern: !!marke,
+    feiern: aufstieg ? 'stufe' : sel !== 'normal' ? sel : marke ? 'erfolg' : null,
   });
 }
 
-function konfetti() {
-  const box = $('#konfetti');
-  const farben = ['#0a84ff', '#bf5af2', '#ff2d78', '#ff9f0a', '#30d158', '#ffffff', akzentFarbe()];
-  box.innerHTML = Array.from({ length: 80 }, () => {
-    const x = Math.random() * 100, dx = (Math.random() - 0.5) * 240;
-    return `<span style="left:${x}vw;background:${farben[Math.floor(Math.random() * farben.length)]};--x:${dx}px;--r:${Math.random() * 900 - 450}deg;--d:${2.2 + Math.random() * 1.6}s;animation-delay:${Math.random() * 0.5}s"></span>`;
-  }).join('');
-  setTimeout(() => { box.innerHTML = ''; }, 4500);
+// Alle eigenen Stempel über alle Reisen – die eine Zahl, die zählt
+function meineStempel() {
+  let n = 0;
+  for (const id of trips.keys()) { const v = ansicht(id); if (v) n += v.orte.filter((o) => o.check && o.check.by === ich.id).length; }
+  return n;
 }
 
-// Erfolgs-Screen
-function erfolg({ icon: ic = 'haken', titel, text, fortschritt, vorschlag, knopf, aktion, zweit, zweitAktion, feiern }) {
+// Zufälliger Fun Fact aus dem Audio-Guide – nicht jedes Mal, damit es eine Überraschung bleibt
+function fundstueck(o) {
+  const z = guides.get(o.id + '.' + ich.sprache);
+  const f = z && z.guide && z.guide.kapitel.find((k) => k.id === 'fakten');
+  if (!f || !f.saetze.length || Math.random() < 0.3) return null;
+  // "Artikel in 30 Sprachen" ist eher Statistik als Fun Fact – nur nehmen, wenn es nichts anderes gibt
+  const gute = f.saetze.filter((s) => !/Wikipedia/.test(s));
+  const pool = gute.length ? gute : f.saetze;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+const KONFETTI_FARBEN = ['#0a84ff', '#bf5af2', '#ff2d78', '#ff9f0a', '#30d158', '#ffd60a', '#ffffff'];
+function konfetti(opt = {}) { partikelKonfetti({ farben: [...KONFETTI_FARBEN, akzentFarbe()], ...opt }); }
+
+// Erfolgs-Screen. kopf: eigenes HTML oben, stempi: Stimmung des Maskottchens statt Symbol,
+// selten: 'silber' | 'gold' zeigt das Metall-Band, feiern: 'erfolg' | 'stufe' | 'silber' | 'gold' (oder true)
+function erfolg({ icon: ic = 'haken', kopf = '', stempi: figur = null, selten = null, titel, text, extra = '', fortschritt, vorschlag, knopf, aktion, zweit, zweitAktion, feiern }) {
   const alt = $('#erfolg'); if (alt) alt.remove();
   const el = document.createElement('div');
   el.className = 'erfolg'; el.id = 'erfolg';
+  const glut = selten === 'gold' ? '--glut:#ffd60a' : selten === 'silber' ? '--glut:#dfe4ea' : '';
   el.innerHTML = `
     <div class="erfolg-hg"></div>
     <div class="erfolg-karte glas-dicht" role="dialog" aria-modal="true">
-      <div class="erfolg-ico">${icon(ic, 44, 2.4)}</div>
+      ${kopf || (figur ? `<div class="erfolg-stempi" style="${glut}">${stempi({ stimmung: figur, groesse: 100 })}</div>` : `<div class="erfolg-ico">${icon(ic, 44, 2.4)}</div>`)}
+      ${selten === 'gold' || selten === 'silber' ? `<div class="selten-band ${selten}">✦ ${esc(selten === 'gold' ? t('Goldstempel') : t('Silberstempel'))}</div>` : ''}
       <h2>${esc(titel)}</h2>
       <p class="unter">${text}</p>
+      ${extra}
       ${fortschritt ? `<div class="erfolg-balken" style="--von:${fortschritt.von};--auf:${fortschritt.auf}"><i></i></div>
         <div class="erfolg-zahlen"><span>${esc(fortschritt.links)}</span><span>${esc(fortschritt.rechts)}</span></div>` : ''}
       ${vorschlag ? `<button class="vorschlag" data-naechster="${esc(vorschlag.o.id)}">
@@ -1489,13 +1590,28 @@ function erfolg({ icon: ic = 'haken', titel, text, fortschritt, vorschlag, knopf
   el.querySelector('.erfolg-hg').onclick = () => zu();
   const z = el.querySelector('[data-zweit]'); if (z) z.onclick = () => zu(zweitAktion);
   const n = el.querySelector('[data-naechster]'); if (n) n.onclick = () => zu(() => ortOeffnen(n.dataset.naechster));
-  if (feiern) setTimeout(() => { sound.erfolg(); fuehlen('erfolg'); konfetti(); }, 150);
+  if (!feiern) return;
+  setTimeout(() => {
+    const k = el.querySelector('.erfolg-stempi, .stufe-kopf, .erfolg-ico');
+    const r = k ? k.getBoundingClientRect() : null;
+    const x = r ? r.left + r.width / 2 : innerWidth / 2, y = r ? r.top + r.height / 2 : innerHeight * 0.3;
+    fuehlen('erfolg');
+    if (feiern === 'gold' || feiern === 'silber') {
+      const gold = feiern === 'gold';
+      sound.selten(gold);
+      glitzer(x, y, gold ? ['#ffd60a', '#ffe17a', '#ffffff', '#ff9f0a'] : ['#ffffff', '#dfe4ea', '#c3cad3', '#9aa3ae']);
+      if (gold) konfetti({ farben: ['#ffd60a', '#ffe17a', '#ff9f0a', '#ffffff'], menge: 90, sterne: true });
+    } else {
+      if (feiern === 'stufe') sound.stufe(); else sound.erfolg();
+      konfetti({ sterne: feiern === 'stufe' });
+    }
+  }, 150);
 }
 
 // ---------- Klicks in allen Seiten ----------
 $('#ansichten').addEventListener('click', (e) => {
   const st = e.target.closest('[data-stempel]');
-  if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel); }
+  if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel, st); }
   const reise = e.target.closest('[data-reise]');
   if (reise) { aktuell = reise.dataset.reise; tripListeSpeichern(); ui.filter = 'alle'; ui.kartenOrt = null; fuehlen('leicht'); oeffnen({ s: 'reise', trip: aktuell }, 'reisen'); pinsZeichnen(); return; }
   const gk = e.target.closest('[data-guidekap]');
@@ -1527,7 +1643,7 @@ $('#ansichten').addEventListener('click', (e) => {
   if (f) {
     if (ui.filter !== f.dataset.filter) { sound.tick(); fuehlen('leicht'); }
     ui.filter = f.dataset.filter;
-    if (ui.filter === 'naehe' && !pos) ortungStarten(false);
+    if (ui.filter === 'naehe' && !pos) standortFragen(false);
     return allesZeichnen();
   }
   const einst = e.target.closest('[data-einst]');
@@ -1596,8 +1712,19 @@ $('#ansichten').addEventListener('click', (e) => {
     if (was === 'guidetempo') { sprecher.tempoWechseln(); return allesZeichnen(); }
     if (was === 'guidezurueck') return sprecher.springen(-1);
     if (was === 'guidevor') return sprecher.springen(1);
-    if (was === 'ortung') return ortungStarten(true);
+    if (was === 'ortung') return standortFragen(true);
     if (was === 'alle') return allesZeigen();
+    if (was === 'checklistezu') { ich.checklisteZu = true; ichSpeichern(); toast(t('Ausgeblendet – die Einführung findest du im Profil')); return allesZeichnen(); }
+    if (was === 'zurreise') { if (!aktuell) return neuerTripDialog(); return oeffnen({ s: 'reise', trip: aktuell }, 'reisen'); }
+    if (was === 'zumguide') {
+      const v = aktuell && ansicht(aktuell);
+      const o = v && (v.orte.find((x) => x.wd && x.k !== 'hotel') || v.orte.find((x) => x.lat != null && x.k !== 'hotel'));
+      if (!o) return neuerTripDialog();
+      ortOeffnen(o.id);
+      return setTimeout(() => toast(t('Tippe beim Audio-Guide auf ▶ – Stempi erzählt los')), 500);
+    }
+    if (was === 'vorlieben') return vorliebenDialog();
+    if (was === 'stimme') return stimmeDialog();
     if (was === 'name') return nameDialog();
     if (was === 'heimat') return heimatDialog();
     if (was === 'einfuehrung') return einfuehrung();
@@ -1829,10 +1956,13 @@ function leereReiseDialog() {
 
 // Liste der vorgeschlagenen Sehenswürdigkeiten mit Häkchen
 function sehenswertListe(liste, vorausgewaehlt) {
+  // "Passt zu dir" nur, wenn es etwas unterscheidet (in Kyoto ist fast alles Tempel)
+  const passend = liste.filter((s) => passtZu(s.k, ich.interessen)).length;
+  const markieren = passend && passend <= liste.length * 0.6;
   return liste.map((s, i) => `<label class="sw-zeile">
     <input type="checkbox" class="sw-haken" data-sw="${i}" ${i < vorausgewaehlt ? 'checked' : ''}>
     ${s.bf ? `<img src="${bildFuerOrt({ bf: s.bf }, 'klein')}" alt="" loading="lazy">` : katKachel(s.k, 22, 'sw-ico')}
-    <span style="min-width:0"><b>${esc(s.n)}</b><small>${esc(s.info || kat(s.k).name)}</small></span>
+    <span style="min-width:0"><b>${esc(s.n)}${markieren && passtZu(s.k, ich.interessen) ? `<span class="passt">${esc(t('Passt zu dir'))}</span>` : ''}</b><small>${esc(s.info || kat(s.k).name)}</small></span>
     <span class="sw-mark">${icon('haken', 15, 3)}</span>
   </label>`).join('');
 }
@@ -1860,10 +1990,28 @@ async function zielDialog(ziel) {
   if (titelDatei) k.querySelector('#zKopf').insertAdjacentHTML('afterbegin', `<img src="${bildFuerTrip({ bf: titelDatei })}" alt="">`);
   k.querySelector('#zText').textContent = (i.text || '').split(/(?<=\.)\s/).slice(0, 2).join(' ');
   const sw = k.querySelector('#zSw');
-  sw.innerHTML = liste.length ? sehenswertListe(liste, 12) : `<p class="klein">${esc(t('Keine Vorschläge gefunden – du kannst Orte danach selbst hinzufügen.'))}</p>`;
+  // Personalisiert: passende Orte nach vorne, Vorauswahl nach Reisetempo und Reisedauer
+  liste = nachInteressen(liste, ich.interessen);
+  const was = interessenText(ich, t);
+  sw.innerHTML = liste.length
+    ? (was ? `<p class="klein" style="display:flex;gap:7px;align-items:flex-start;margin:0 0 8px">${icon('funken', 15)}<span>${esc(t('Vorausgewählt nach deinen Interessen: {was}', { was }))}</span></p>` : '') + sehenswertListe(liste, 12)
+    : `<p class="klein">${esc(t('Keine Vorschläge gefunden – du kannst Orte danach selbst hinzufügen.'))}</p>`;
   const ok = k.querySelector('#zOk');
   const zaehlen = () => { const n = sw.querySelectorAll('.sw-haken:checked').length; ok.disabled = false; ok.textContent = n ? t('Reise mit {n} Orten anlegen', { n }) : t('Reise anlegen'); };
-  sw.addEventListener('change', () => { sound.tick(); fuehlen('leicht'); zaehlen(); });
+  let angefasst = false;
+  sw.addEventListener('change', () => { angefasst = true; sound.tick(); fuehlen('leicht'); zaehlen(); });
+  // Sobald die Reisedauer feststeht: so viele Orte vorauswählen, wie zum Tempo passen (solange nichts von Hand geändert wurde)
+  const nachDauer = () => {
+    const von = k.querySelector('#zVon').value, bis = k.querySelector('#zBis').value;
+    if (angefasst || !von || !liste.length) return;
+    const tage = tageAnzahl({ von, bis: bis || von });
+    const n = Math.max(4, Math.min(liste.length, tage * orteProTag(ich.tempo)));
+    sw.querySelectorAll('.sw-haken').forEach((c) => { c.checked = +c.dataset.sw < n; });
+    zaehlen();
+  };
+  k.querySelector('#zVon').addEventListener('change', nachDauer);
+  k.querySelector('#zBis').addEventListener('change', nachDauer);
+  nachDauer();
   zaehlen();
   ok.onclick = async () => {
     const auswahl = [...sw.querySelectorAll('.sw-haken:checked')].map((c) => liste[+c.dataset.sw]);
@@ -1897,7 +2045,7 @@ async function entdeckenDialog() {
   try { liste = await sehenswuerdigkeiten(mitte.lat, mitte.lng, v.meta.radius || 12, ich.sprache); } catch {}
   if (!k.isConnected) return;
   // Schon vorhandene Orte weglassen (gleiche Wikidata-ID oder sehr nah mit ähnlichem Namen)
-  liste = liste.filter((s) => !v.orte.some((o) => o.wd === s.wd || (o.lat != null && abstand(o, s) < 150)));
+  liste = nachInteressen(liste.filter((s) => !v.orte.some((o) => o.wd === s.wd || (o.lat != null && abstand(o, s) < 150))), ich.interessen);
   const sw = k.querySelector('#eSw');
   sw.innerHTML = liste.length ? sehenswertListe(liste, 0) : `<p class="klein">${esc(navigator.onLine ? t('Ihr habt die bekanntesten Orte schon alle!') : t('Dafür braucht es Internet.'))}</p>`;
   const ok = k.querySelector('#eOk');
@@ -1913,7 +2061,7 @@ async function entdeckenDialog() {
 
 // ---------- Audio-Guide ----------
 const guides = new Map(); // Orts-ID -> { status: 'laedt' | 'fertig' | 'fehlt', guide }
-const sprecher = new Sprecher(() => guideAnzeigen());
+const sprecher = new Sprecher(() => guideAnzeigen(), (lang) => (ich.stimmen || {})[lang] || null);
 
 function guideFuer(o) {
   const schl = o.id + '.' + ich.sprache;
@@ -1946,6 +2094,7 @@ function guideHtml(o) {
     <div class="guide-kopf">
       <button class="guide-play" data-aktion="guideplay" data-id="${esc(o.id)}" aria-label="${esc(laeuft ? t('Pause') : t('Abspielen'))}">${icon(laeuft ? 'pauseIc' : 'play', 24, 2.4)}</button>
       <span style="min-width:0;flex:1"><b>${esc(t('Audio-Guide'))}</b><small>${esc(t('ca. {n} Min', { n: Math.max(1, Math.round(g.sekunden / 60 / sprecher.tempo)) }))}${g.fremdsprache ? ' · ' + esc(t('nur auf Englisch verfügbar')) : ''}</small></span>
+      ${stempi({ groesse: 42, kopfhoerer: true, titel: t('Stempi erzählt') })}
       <button class="chip" data-aktion="guidetempo">${String(sprecher.tempo).replace('.', ',')}×</button>
     </div>
     <div class="guide-wellen" aria-hidden="true">${'<i></i>'.repeat(24)}</div>
@@ -2007,6 +2156,7 @@ function guideStarten(id, kapitel) {
   if (sprecher.ortId !== id || sprecher.guide !== z.guide) sprecher.laden(id, z.guide);
   if (kapitel) sprecher.kapitel(kapitel); else sprecher.umschalten();
   fuehlen('leicht');
+  if (sprecher.laeuft) schrittErledigt('guide');
 }
 
 // Alle Guides einer Reise vorab laden, damit sie offline funktionieren
@@ -2126,6 +2276,7 @@ function einladeLink(code) { return abs('./') + '#code=' + code; }
 function einladenDialog() {
   const tr = trips.get(aktuell);
   if (!tr) return;
+  schrittErledigt('einladen');
   const v = ansicht(aktuell);
   const link = einladeLink(tr.code);
   let qrSvg = '';
@@ -2544,6 +2695,7 @@ function ortungStarten(zentrieren) {
       pos = { lat: p.coords.latitude, lng: p.coords.longitude, genau: p.coords.accuracy };
       ichZeichnen();
       if (zentrieren && erstes && ui.tab === 'karte') map.easeTo({ center: [pos.lng, pos.lat], zoom: Math.max(map.getZoom(), 14), padding: polster(), duration: 800 });
+      if (erstes && ui.route && !ui.route.daten && (ui.route.von === 'ich' || ui.route.nach === 'ich')) routeBerechnen();
       erstes = false;
       ortsDrossel();
     }, (e) => {
@@ -2556,6 +2708,81 @@ function ortungStarten(zentrieren) {
     map.easeTo({ center: [pos.lng, pos.lat], zoom: Math.max(map.getZoom(), 14), padding: polster(), duration: 800 });
   }
 }
+// Erst erklären, dann fragen – und zwar genau dann, wenn der Standort gebraucht wird (Mobbin: "ask at the right moment").
+// Die Systemabfrage kommt nur einmal; wer dort ablehnt, muss es in den Einstellungen ändern.
+async function standortFragen(zentrieren) {
+  if (!('geolocation' in navigator)) return toast(t('Standort wird nicht unterstützt'));
+  let status = 'prompt';
+  try { status = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch {}
+  if (ortungId != null || status !== 'prompt') return ortungStarten(zentrieren);
+  const k = modal(`
+    <div class="frage-kopf">${stempi({ stimmung: 'staunen', groesse: 84 })}</div>
+    <h2 style="text-align:center;padding:0">${esc(t('Darf Stempi sehen, wo du bist?'))}</h2>
+    <p class="lead" style="text-align:center">${esc(t('Dann kann er dir mehr zeigen:'))}</p>
+    <ul class="gruende">
+      <li><span class="e-ico" style="background:#0a84ff">${icon('navi', 18)}</span>${esc(t('Wie weit es zu jedem Ort ist'))}</li>
+      <li><span class="e-ico" style="background:#30c25a">${icon('ortung', 18)}</span>${esc(t('„In der Nähe“ – die nächsten Orte zuerst'))}</li>
+      <li><span class="e-ico" style="background:#bf5af2">${icon('route', 18)}</span>${esc(t('Routen ab deinem Standort'))}</li>
+    </ul>
+    <p class="klein" style="display:flex;gap:6px;align-items:center;justify-content:center;text-align:center;margin:0 0 14px">${icon('schloss', 14)}<span>${esc(t('Dein Standort bleibt auf deinem Handy und wird nie geteilt.'))}</span></p>
+    <button class="knopf voll akzent" id="sJa">${esc(t('Standort erlauben'))}</button>
+    <button class="knopf voll" data-zu style="margin-top:8px;background:none;border:0;box-shadow:none;color:var(--text-2)">${esc(t('Nicht jetzt'))}</button>`);
+  k.querySelector('#sJa').onclick = () => { modalSchliessen(); fuehlen('leicht'); ortungStarten(zentrieren); };
+}
+
+// Interessen und Reisetempo nachträglich ändern
+function vorliebenDialog() {
+  const k = modal(`
+    <h2>${esc(t('Interessen & Reisetempo'))}</h2>
+    <p class="lead">${esc(t('Danach wählt Stempi bei neuen Reisen die Sehenswürdigkeiten vor und verteilt sie auf die Tage.'))}</p>
+    <div id="vBox">${vorliebenHtml(ich, { t, icon, esc })}</div>
+    <div class="knopf-reihe"><button class="knopf voll akzent" data-zu>${esc(t('Fertig'))}</button></div>`);
+  k.querySelector('#vBox').onclick = (e) => {
+    const was = vorliebenKlick(e, ich, k);
+    if (!was) return;
+    ichSpeichern(); fuehlen('leicht');
+    if (was === 'interesse') sound.plopp(); else sound.tick();
+  };
+  modalZu = () => allesZeichnen();
+}
+
+// Stimme für den Audio-Guide auswählen, mit Hörprobe
+function stimmeDialog() {
+  const lang = ich.sprache;
+  const tipp = istIOS ? t('Am iPhone gibt es viel natürlichere Stimmen gratis: Einstellungen › Bedienungshilfen › Gesprochene Inhalte › Stimmen › Deutsch – dort z. B. „Anna (Premium)“ laden. Danach erscheint sie hier.')
+    : /Android/i.test(navigator.userAgent) ? t('Bessere Stimmen: Android-Einstellungen › Bedienungshilfen › Sprachausgabe › Google › Stimmen installieren.')
+      : t('Am Computer klingen die „Natural“-Stimmen in Microsoft Edge am besten.');
+  const k = modal(`
+    <div class="frage-kopf" id="sKopf">${stempi({ groesse: 72, kopfhoerer: true })}</div>
+    <h2 style="text-align:center;padding:0">${esc(t('Stimme des Audio-Guides'))}</h2>
+    <p class="lead" style="text-align:center">${esc(t('Such dir die Stimme aus, die dir am besten gefällt – mit ▶ hörst du eine Probe.'))}</p>
+    <ul class="stimmen" id="sListe"></ul>
+    <div class="ios-hinweis">${esc(tipp)}</div>`);
+  const kopf = k.querySelector('#sKopf');
+  const zeichnen = () => {
+    const box = k.querySelector('#sListe');
+    if (!box) return;
+    const liste = stimmenFuer(lang);
+    const gewaehlt = (ich.stimmen || {})[lang] || (liste[0] && liste[0].name);
+    const q = (v) => { const n = stimmQualitaet(v); return `<span class="qualitaet ${n === 3 ? '' : n === 2 ? 'mittel' : 'einfach'}">${esc(n === 3 ? t('Natürlich') : n === 2 ? t('Gut') : t('Einfach'))}</span>`; };
+    box.innerHTML = liste.length
+      ? liste.map((v) => `<li class="${v.name === gewaehlt ? 'an' : ''}"><button class="wahl" data-stimme="${esc(v.name)}"><b>${esc(v.name.replace(/^(Microsoft|Google)\s+/, ''))}</b><small>${esc(v.lang)} ${q(v)}</small></button>
+          <button class="kreisknopf" data-probe="${esc(v.name)}" aria-label="${esc(t('Probe hören'))}">${icon('play', 16, 2.4)}</button></li>`).join('')
+      : `<p class="klein">${esc(t('Auf diesem Gerät wurden keine Stimmen gefunden.'))}</p>`;
+  };
+  zeichnen();
+  const neu = () => zeichnen();
+  speechSynthesis.addEventListener?.('voiceschanged', neu);
+  modalZu = () => { speechSynthesis.removeEventListener?.('voiceschanged', neu); sprecher.stop(); allesZeichnen(); };
+  const probe = (name) => { kopf.classList.add('spricht'); sprecher.probe(lang, name, () => kopf.classList.remove('spricht')); fuehlen('leicht'); };
+  k.onclick = (e) => {
+    const p = e.target.closest('[data-probe]');
+    if (p) return probe(p.dataset.probe);
+    const s = e.target.closest('[data-stimme]');
+    if (s) { ich.stimmen = { ...(ich.stimmen || {}), [lang]: s.dataset.stimme }; ichSpeichern(); sound.tick(); zeichnen(); probe(s.dataset.stimme); }
+  };
+}
+
 let ortsZeit = 0;
 function ortsDrossel() { if (Date.now() - ortsZeit > 8000) { ortsZeit = Date.now(); neuZeichnen(); } }
 
@@ -2619,6 +2846,33 @@ addEventListener('storage', (e) => {
 // Ortszeiten und Wetter regelmäßig auffrischen
 setInterval(() => { if (!document.hidden) neuZeichnen(); }, 60e3);
 
+// Reisepass-Karte kippt unter dem Finger, der Holo-Glanz wandert mit (wie die Karten bei Revolut)
+function passKippen() {
+  document.addEventListener('pointerdown', (e) => {
+    const k = e.target.closest('.pass-karte');
+    if (!k || e.target.closest('button')) return;
+    k.classList.add('greift');
+    const bewegen = (ev) => {
+      const r = k.getBoundingClientRect();
+      const x = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), y = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+      k.style.setProperty('--ry', ((x - 0.5) * 16).toFixed(1) + 'deg');
+      k.style.setProperty('--rx', ((0.5 - y) * 12).toFixed(1) + 'deg');
+      k.style.setProperty('--mx', Math.round(x * 100) + '%');
+      k.style.setProperty('--my', Math.round(y * 100) + '%');
+    };
+    const loslassen = () => {
+      k.classList.remove('greift');
+      k.style.setProperty('--rx', '0deg'); k.style.setProperty('--ry', '0deg');
+      removeEventListener('pointermove', bewegen); removeEventListener('pointerup', loslassen); removeEventListener('pointercancel', loslassen);
+    };
+    bewegen(e);
+    fuehlen('leicht');
+    addEventListener('pointermove', bewegen, { passive: true });
+    addEventListener('pointerup', loslassen);
+    addEventListener('pointercancel', loslassen);
+  });
+}
+
 // ---------- Einführung ----------
 function einfuehrung(einladung) {
   return starteOnboarding({
@@ -2628,7 +2882,6 @@ function einfuehrung(einladung) {
     speichern: () => { ichSpeichern(); },
     spracheSetzen: (s) => { ich.sprache = s; setzeSprache(s); ichSpeichern(); tabLeisteZeichnen(); },
     designSetzen: () => { ichSpeichern(); designAnwenden(); },
-    standort: () => ortungStarten(false),
     konfetti,
   }).then(() => {
     ich.eingerichtet = true; ichSpeichern();
@@ -2648,6 +2901,8 @@ async function start() {
   tabLeisteZeichnen();
   for (const tab of Object.keys(ui.stapel)) seiteAnlegen(tab, ui.stapel[tab][0]);
   randWischen();
+  stempiLeben({ beimAntippen: () => { sound.quietsch(); fuehlen('leicht'); } });
+  passKippen();
   await karteStarten();
   map.once('load', () => allesZeigen(false));
   allesZeichnen();

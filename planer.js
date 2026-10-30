@@ -45,14 +45,14 @@ export function reihenfolge(orte, start) {
 
 // orte: [{id, lat, lng, k, z}], start: Unterkunft {lat,lng} oder null, tage: Anzahl, von: 'YYYY-MM-DD' oder null
 // Ergebnis: Map id -> {tag, reihe}
-export function autoPlan(orte, { start, tage, von }) {
+// proTag: Orte pro Stadttag, je nach Reisetempo aus der Einführung (3 gemütlich, 4 ausgewogen, 5 Vollgas)
+export function autoPlan(orte, { start, tage, von, proTag = 4 }) {
   const plan = new Map();
   const mitOrt = orte.filter((o) => o.lat != null && o.k !== 'hotel');
   if (!mitOrt.length) return plan;
   const mitte = start || { lat: median(mitOrt.map((o) => o.lat)), lng: median(mitOrt.map((o) => o.lng)) };
   const weit = mitOrt.filter((o) => abstand(mitte, o) > 18000);
   const nah = mitOrt.filter((o) => !weit.includes(o));
-  const proTag = 4;
   let anzahl = tage || Math.max(1, Math.ceil(nah.length / proTag) + weit.length);
   const stadtTage = Math.max(1, anzahl - weit.length);
   const groesse = Math.ceil(nah.length / stadtTage);

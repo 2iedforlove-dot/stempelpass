@@ -42,7 +42,16 @@ export async function zieleSuchen(q, sprache) {
       radius = Math.min(x.type === 'country' ? 600 : 150, Math.max(4, km));
     }
     return { n: x.name, typ: x.type, land: x.country || '', region: x.state || '', cc: (x.countrycode || '').toLowerCase(), lat, lng, radius: Math.round(radius) };
-  }).filter((z, i, a) => a.findIndex((y) => y.n === z.n && y.cc === z.cc && y.typ === z.typ) === i);
+  }).filter((z, i, a) => a.findIndex((y) => y.n === z.n && y.cc === z.cc && y.typ === z.typ) === i)
+    // Genauer Namenstreffer und Städte/Länder zuerst – sonst landet bei "Kyoto" ein Dorf in Indonesien vor Kyōto
+    .map((z, i) => [z, rang(z, q) + i * 0.01]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+}
+
+const TYP_RANG = { country: 0, city: 1, state: 2, district: 3, locality: 4 };
+const normal = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+function rang(z, q) {
+  const n = normal(z.n), s = normal(q);
+  return (n === s ? 0 : n.startsWith(s) ? 5 : 8) + (TYP_RANG[z.typ] ?? 5);
 }
 
 // Titelbild und Kurzbeschreibung eines Ziels: Text aus Wikipedia, Foto aus Wikidata (P18 ist bei Städten

@@ -196,11 +196,37 @@ export async function guideLaden(ort, sprache, t) {
 }
 
 // ---------- Vorlesen ----------
+// Was bei KI-Stimmen (ElevenLabs) den Unterschied macht, geht teils auch mit der Gerätestimme:
+// die beste verfügbare Stimme wählen (oder selbst aussuchen), ruhiges Grundtempo, kurze Pausen
+// zwischen Sätzen, längere zwischen Kapiteln, und eine gesprochene Überleitung statt eines harten Schnitts.
+const BRUECKEN = {
+  de: { geschichte: 'Ein bisschen Geschichte.', architektur: 'Schau dir mal die Bauweise an.', legenden: 'Jetzt wird es spannend – eine Legende.', fakten: 'Und zum Schluss ein paar Fun Facts.' },
+  en: { geschichte: 'A little history.', architektur: 'Now take a look at how it was built.', legenden: 'Here comes the exciting part – a legend.', fakten: 'And finally, a few fun facts.' },
+};
+export const PROBE = {
+  de: 'Hallo! Ich bin Stempi und erzähle dir die Geschichten hinter euren Reisezielen.',
+  en: 'Hi! I am Stempi, and I will tell you the stories behind the places you visit.',
+};
+
+// Qualität einer Stimme grob einschätzen (Apple Premium/Erweitert, Microsoft Natural, Google)
+export function stimmQualitaet(v) {
+  if (/premium|natural|neural|wavenet|studio|siri/i.test(v.name)) return 3;
+  if (/enhanced|erweitert|google|online/i.test(v.name)) return 2;
+  return 1;
+}
+
+export function stimmenFuer(lang) {
+  if (!('speechSynthesis' in window)) return [];
+  return speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().replace('_', '-').startsWith(lang))
+    .sort((a, b) => stimmQualitaet(b) - stimmQualitaet(a) || (/de-de|en-gb/i.test(b.lang) - /de-de|en-gb/i.test(a.lang)) || a.name.localeCompare(b.name));
+}
+
 // Satz für Satz sprechen: so lässt sich der aktuelle Satz hervorheben, springen und pausieren
 // (lange Texte am Stück bricht Chrome nach ~15 s ab).
 export class Sprecher {
-  constructor(beiAenderung) {
+  constructor(beiAenderung, wunschStimme = () => null) {
     this.beiAenderung = beiAenderung;
+    this.wunschStimme = wunschStimme;
     this.liste = []; // [{kapitel, text}]
     this.i = 0;
     this.laeuft = false;
@@ -219,25 +245,48 @@ export class Sprecher {
   }
 
   stimme(lang) {
-    if (this.stimmeCache && this.stimmeCache.lang === lang) return this.stimmeCache.v;
-    const alle = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(lang));
-    // Hochwertige Stimmen bevorzugen (Apple "Premium/Enhanced", Google, Microsoft "Natural")
-    const punkte = (v) => (/premium|enhanced|natural|neural|siri/i.test(v.name) ? 4 : 0) + (/google/i.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0) + (/de-de|en-gb/i.test(v.lang) ? 1 : 0);
-    const v = alle.sort((a, b) => punkte(b) - punkte(a))[0] || null;
-    this.stimmeCache = { lang, v };
+    const wunsch = this.wunschStimme(lang);
+    if (this.stimmeCache && this.stimmeCache.lang === lang && this.stimmeCache.wunsch === wunsch) return this.stimmeCache.v;
+    const alle = stimmenFuer(lang);
+    const v = (wunsch && alle.find((x) => x.name === wunsch)) || alle[0] || null;
+    this.stimmeCache = { lang, wunsch, v };
     return v;
+  }
+
+  // Ein Satz zur Probe in der gewählten (oder einer bestimmten) Stimme
+  probe(lang, stimmName, fertig) {
+    if (!this.verfuegbar) return;
+    this.stop(); this.beiAenderung();
+    const u = new SpeechSynthesisUtterance(PROBE[lang] || PROBE.de);
+    u.lang = lang === 'en' ? 'en-GB' : 'de-DE';
+    const v = stimmName ? stimmenFuer(lang).find((x) => x.name === stimmName) : this.stimme(lang);
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = 0.97;
+    u.onend = u.onerror = () => { if (fertig) fertig(); };
+    this.u = u;
+    speechSynthesis.speak(u);
   }
 
   sprechen() {
     const satz = this.liste[this.i];
     if (!satz) { this.laeuft = false; this.i = 0; this.beiAenderung(); return; }
-    const u = new SpeechSynthesisUtterance(satz.text);
     const lang = this.guide.sprache === 'en' ? 'en' : 'de';
+    // Am Anfang eines neuen Kapitels eine kurze Überleitung mitsprechen
+    const vorher = this.liste[this.i - 1];
+    const bruecke = vorher && vorher.kapitel !== satz.kapitel ? BRUECKEN[lang][satz.kapitel] || '' : '';
+    const u = new SpeechSynthesisUtterance(bruecke ? bruecke + ' ' + satz.text : satz.text);
     u.lang = lang === 'en' ? 'en-GB' : 'de-DE';
     const v = this.stimme(lang);
-    if (v) u.voice = v;
-    u.rate = this.tempo;
-    u.onend = () => { if (this.u !== u || !this.laeuft) return; this.i++; this.beiAenderung(); this.sprechen(); };
+    if (v) { u.voice = v; u.lang = v.lang; }
+    // Ruhiges Grundtempo mit einer Spur Schwankung, damit es weniger nach Ansage klingt
+    u.rate = this.tempo * (0.96 + Math.random() * 0.03);
+    u.onend = () => {
+      if (this.u !== u || !this.laeuft) return;
+      const naechster = this.liste[this.i + 1];
+      const pause = !naechster ? 0 : naechster.kapitel !== satz.kapitel ? 750 : 170;
+      clearTimeout(this.pausenTimer);
+      this.pausenTimer = setTimeout(() => { if (this.u !== u || !this.laeuft) return; this.i++; this.beiAenderung(); this.sprechen(); }, pause / this.tempo);
+    };
     u.onerror = (e) => { if (this.u === u && e.error !== 'interrupted' && e.error !== 'canceled') { this.laeuft = false; this.beiAenderung(); } };
     this.u = u; // Referenz halten, sonst feuert onend in Chrome manchmal nicht
     speechSynthesis.speak(u);
@@ -246,16 +295,17 @@ export class Sprecher {
   start(ab) {
     if (!this.verfuegbar || !this.liste.length) return;
     if (ab != null) this.i = Math.max(0, Math.min(this.liste.length - 1, ab));
+    clearTimeout(this.pausenTimer);
     speechSynthesis.cancel();
     this.laeuft = true;
     this.beiAenderung();
     this.sprechen();
   }
 
-  pause() { this.laeuft = false; this.u = null; speechSynthesis.cancel(); this.beiAenderung(); }
+  pause() { this.laeuft = false; this.u = null; clearTimeout(this.pausenTimer); speechSynthesis.cancel(); this.beiAenderung(); }
   umschalten() { if (this.laeuft) this.pause(); else this.start(); }
   springen(n) { const war = this.laeuft; this.i = Math.max(0, Math.min(this.liste.length - 1, this.i + n)); if (war) this.start(); else this.beiAenderung(); }
   kapitel(id) { const i = this.liste.findIndex((s) => s.kapitel === id); if (i >= 0) this.start(i); }
   tempoWechseln() { this.tempo = this.tempo >= 1.5 ? 0.9 : this.tempo >= 1.2 ? 1.5 : this.tempo >= 1 ? 1.25 : 1; if (this.laeuft) this.start(); else this.beiAenderung(); }
-  stop() { this.laeuft = false; this.u = null; if (this.verfuegbar) speechSynthesis.cancel(); }
+  stop() { this.laeuft = false; this.u = null; clearTimeout(this.pausenTimer); if (this.verfuegbar) speechSynthesis.cancel(); }
 }
