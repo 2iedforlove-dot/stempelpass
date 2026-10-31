@@ -14,6 +14,7 @@ import { fotoVorbereiten, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fo
 import { hinweiseFuer } from './hinweise.js';
 import { starteRueckblick } from './rueckblick.js';
 import { fotobuchZeigen } from './fotobuch.js';
+import { rechtlichesHtml, rechtlichesFertig } from './rechtliches.js';
 import { icon, PFADE } from './icons.js';
 import { sound, haptik, tonAn, tonSetzen } from './feedback.js';
 import { t, setzeSprache, loc } from './i18n.js';
@@ -1573,6 +1574,7 @@ function profilHtml() {
       ${zeile('homescreen', '#ff2d78', t('Zum Startbildschirm hinzufügen'), `${esc(istApp ? t('Installiert ✓') : '')} ${pfeilRechts(16)}`, 'homescreen')}
       ${zeile('rakete', '#bf5af2', t('Einführung ansehen'), pfeilRechts(16), 'einfuehrung')}
       ${zeile('bild', '#8e8e93', t('Bildnachweise'), pfeilRechts(16), 'nachweise')}
+      ${rechtlichesFertig() ? zeile('schloss', '#8e8e93', t('Impressum & Datenschutz'), pfeilRechts(16), 'rechtliches') : ''}
     </div>
     <p class="klein" style="text-align:center">Stempelpass · ${esc(t('Eure Daten sind Ende-zu-Ende-verschlüsselt.'))}</p>`;
 }
@@ -2099,6 +2101,7 @@ $('#ansichten').addEventListener('click', (e) => {
     if (was === 'heimat') return heimatDialog();
     if (was === 'einfuehrung') return einfuehrung();
     if (was === 'nachweise') return nachweiseDialog();
+    if (was === 'rechtliches') return rechtlichesDialog();
     return;
   }
   const karte = e.target.closest('.ort');
@@ -3187,6 +3190,13 @@ function syncDialog() {
   });
 }
 
+// Impressum und Datenschutz; liegt über allem, auch über der Einführung
+function rechtlichesDialog() {
+  modal(`<div class="recht">${rechtlichesHtml(ich.sprache, esc)}</div>`);
+  $('#modal').classList.add('ganz-oben');
+  modalZu = () => $('#modal').classList.remove('ganz-oben');
+}
+
 async function nachweiseDialog() {
   let n = {};
   try { n = await (await fetch('bilder/nachweise.json')).json(); } catch {}
@@ -3865,6 +3875,8 @@ async function start() {
   let schonDa = false;
   if (einladung) { const keys = await deriveKeys(einladung); schonDa = trips.has(keys.id); if (schonDa) { aktuell = keys.id; oeffnen({ s: 'reise', trip: keys.id }, 'reisen'); } }
   // Link auf einen Plan, z. B. vom Plakat einer Wanderstempel-Runde: ?plan=lokal:moedling
+  // Zum Gegenlesen, solange im Profil noch kein Eintrag steht: ?seite=rechtliches
+  if (para.get('seite') === 'rechtliches') { history.replaceState(null, '', location.pathname); setTimeout(rechtlichesDialog, 400); }
   const planLink = para.get('plan');
   if (planLink) history.replaceState(null, '', location.pathname);
   const planZeigen = () => { if (planLink && /^(lokal:[a-z]+|30078:[0-9a-f]{64}:stempelpass-plan:[a-z0-9]+)$/.test(planLink)) { tabZeigen('entdecken'); planOeffnen(planLink); } };

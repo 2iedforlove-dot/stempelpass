@@ -1141,3 +1141,19 @@ pre.codes { font: 600 14px/1.6 ui-monospace, Menlo, Consolas, monospace; backgro
 .fb-raster button span { position: absolute; right: 5px; bottom: 5px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--akzent); }
 .fb-raster button.aus { opacity: .35; transform: scale(.92); }
 .fb-raster button.aus span { background: rgba(0, 0, 0, .5); color: transparent; }
+
+/* ---------- Impressum und Datenschutz ---------- */
+.modal.ganz-oben { z-index: 75; }
+.recht h2 { font-size: 24px; margin: 6px 0 10px; padding-right: 40px; }
+.recht h2 + p { margin-top: 0; }
+.recht h2:not(:first-of-type) { margin-top: 30px; }
+.recht h3 { font-size: 15.5px; margin: 20px 0 6px; }
+.recht p, .recht li { font-size: 14px; line-height: 1.55; color: var(--text-2); margin: 0 0 8px; }
+.recht ul { margin: 0 0 8px; padding-left: 20px; }
+.recht li { margin-bottom: 5px; }
+.recht b { color: var(--text); font-weight: 650; }
+.recht a { color: var(--akzent); }
+.recht code { font-size: 12.5px; background: var(--flaeche-2); padding: 1px 5px; border-radius: 6px; }
+.recht .platzhalter { background: color-mix(in srgb, var(--akzent) 22%, transparent); color: var(--text); padding: 0 4px; border-radius: 5px; }
+.recht-entwurf { padding: 10px 12px; margin: 0 40px 12px 0; border-radius: 14px; font-size: 13.5px; font-weight: 650; color: var(--akzent); background: color-mix(in srgb, var(--akzent) 12%, transparent); }
+.recht-stand { font-size: 12.5px !important; color: var(--text-3) !important; margin-top: 18px !important; }

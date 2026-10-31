@@ -309,4 +309,5 @@ export const EN = {
   'Fotobuch gestalten': 'Design photo book', 'Untertitel': 'Subtitle', 'z. B. Herbstferien mit der ganzen Familie': 'e.g. Autumn holiday with the whole family',
   'Stil': 'Style', 'Titelbild': 'Cover photo', 'Fotos im Buch': 'Photos in the book', 'Antippen blendet ein Foto aus': 'Tap to hide a photo',
   'Papier': 'Paper', 'Sand': 'Sand', 'Nacht': 'Night',
+  'Impressum & Datenschutz': 'Legal notice & privacy',
 };
