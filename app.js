@@ -6,6 +6,7 @@ import { stempi, stimmung, stempiLeben } from './maskottchen.js';
 import { konfetti as partikelKonfetti, spritzer, glitzer } from './partikel.js';
 import { stufe, stufenName, seltenheit, bestenliste } from './belohnung.js';
 import { vorliebenHtml, vorliebenKlick, nachInteressen, passtZu, interessenText, orteProTag } from './vorlieben.js';
+import { planeSuchen, planHolen, statistik, planVeroeffentlichen, planZurueckziehen, bewerten, kopieMelden, meinPk } from './plaene.js';
 import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
 import { fotoVerkleinern, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl } from './tagebuch.js';
@@ -65,7 +66,8 @@ const schrittErledigt = (k) => { if (!ich.schritte[k]) { ich.schritte = { ...ich
 
 const trips = new Map(); // id -> { code, keys, data }
 let aktuell = LS.get('sp.aktuell', null);
-const ui = { tab: 'reisen', stapel: { reisen: [{ s: 'home' }], karte: [{ s: 'karte' }], profil: [{ s: 'profil' }] }, filter: 'alle', kartenOrt: null, reiseAnsicht: 'orte', planTag: 1, kartenTag: null };
+const ui = { tab: 'reisen', stapel: { reisen: [{ s: 'home' }], entdecken: [{ s: 'entdecken' }], karte: [{ s: 'karte' }], profil: [{ s: 'profil' }] }, filter: 'alle', kartenOrt: null, reiseAnsicht: 'orte', planTag: 1, kartenTag: null,
+  entdecken: { ziel: null, liste: null, laedt: false, fehler: false } };
 let pos = null; // {lat, lng, genau}
 
 const speicherTimer = new Map();
@@ -542,7 +544,7 @@ function wetterIcon(w) {
 }
 
 // ---------- Tabs und Seiten-Stapel ----------
-const TABS = { reisen: ['koffer', 'Reisen'], karte: ['karteTab', 'Karte'], profil: ['profil', 'Profil'] };
+const TABS = { reisen: ['koffer', 'Reisen'], entdecken: ['globus', 'Entdecken'], karte: ['karteTab', 'Karte'], profil: ['profil', 'Profil'] };
 const tabEl = (tab) => $('#tab-' + tab);
 
 function tabLeisteZeichnen() {
@@ -566,6 +568,7 @@ function tabZeigen(tab) {
   tabLeisteZeichnen();
   sound.tick(); fuehlen('leicht');
   if (tab === 'karte') { if (!ui.kartenOrt) setTimeout(() => allesZeigen(true), 60); }
+  if (tab === 'entdecken' && !ui.entdecken.liste && !ui.entdecken.laedt) plaeneLaden();
   const st = ui.stapel[tab];
   st.forEach((e, i) => { const el = seiteEl(tab, i); if (el) seiteZeichnen(el, e); });
   allesZeichnen();
@@ -645,6 +648,8 @@ function seitenHtml(e) {
   if (e.s === 'ort') return ortHtml(e.ort, e.tab);
   if (e.s === 'karte') return karteHtml();
   if (e.s === 'profil') return profilHtml();
+  if (e.s === 'entdecken') return entdeckenHtml();
+  if (e.s === 'plan') return planSeiteHtml(e.addr);
   return '';
 }
 
@@ -879,6 +884,7 @@ function reiseHtml(id) {
       </div>
       ${v.erledigt ? `<button class="rb-banner glas" data-aktion="rueckblick"><span class="rb-play">${icon('play', 18, 2.4)}</span><span><b>${esc(t('Rückblick ansehen'))}</b><small>${esc(t('Eure Reise als Story – mit Musik'))}</small></span>${pfeilRechts()}</button>` : ''}
       ${v.meta ? `<button class="knopf glas voll entdecken" data-aktion="entdecken">${icon('funken', 19)} ${esc(t('Sehenswürdigkeiten entdecken'))}</button>` : ''}
+      ${v.meta ? teilenHtml(v) : ''}
       ${segmenteHtml(v)}
       ${liste.map((o) => ortKarte(v, o)).join('')}${leer}
       ${n ? `<p class="lang-tipp">${esc(t('Lange auf einen Ort drücken zum Löschen oder Bearbeiten'))}</p>` : ''}`}
@@ -1612,6 +1618,10 @@ function erfolg({ icon: ic = 'haken', kopf = '', stempi: figur = null, selten = 
 $('#ansichten').addEventListener('click', (e) => {
   const st = e.target.closest('[data-stempel]');
   if (st) { e.stopPropagation(); return stempeln(st.dataset.stempel, st); }
+  const pl = e.target.closest('[data-plan]');
+  if (pl) { sound.tick(); fuehlen('leicht'); return planOeffnen(pl.dataset.plan); }
+  const sterne = e.target.closest('[data-sterne]');
+  if (sterne) { sound.tick(); fuehlen('leicht'); return bewertenDialog(+sterne.dataset.sterne); }
   const reise = e.target.closest('[data-reise]');
   if (reise) { aktuell = reise.dataset.reise; tripListeSpeichern(); ui.filter = 'alle'; ui.kartenOrt = null; fuehlen('leicht'); oeffnen({ s: 'reise', trip: aktuell }, 'reisen'); pinsZeichnen(); return; }
   const gk = e.target.closest('[data-guidekap]');
@@ -1723,6 +1733,14 @@ $('#ansichten').addEventListener('click', (e) => {
       ortOeffnen(o.id);
       return setTimeout(() => toast(t('Tippe beim Audio-Guide auf ▶ – Stempi erzählt los')), 500);
     }
+    if (was === 'zielwahl') return zielWahlDialog();
+    if (was === 'zielweg') { ui.entdecken.ziel = null; ui.entdecken.liste = null; return plaeneLaden(); }
+    if (was === 'zielplan') return ui.entdecken.ziel ? zielDialog(ui.entdecken.ziel) : neuerTripDialog();
+    if (was === 'plaeneneu') return plaeneLaden();
+    if (was === 'planuebernehmen') { const p = planFinden(a.dataset.addr); return p && uebernehmenDialog(p); }
+    if (was === 'planzurueckziehen') return planZurueckziehenFragen(a.dataset.addr);
+    if (was === 'veroeffentlichen') return veroeffentlichenDialog();
+    if (was === 'meinplan') { tabZeigen('entdecken'); while (ui.stapel.entdecken.length > 1) zurueck('entdecken', true); return planOeffnen(a.dataset.addr); }
     if (was === 'vorlieben') return vorliebenDialog();
     if (was === 'stimme') return stimmeDialog();
     if (was === 'name') return nameDialog();
@@ -2172,6 +2190,349 @@ async function guidesOfflineLaden(knopf) {
   const fertig = orte.filter((o) => (guides.get(o.id + '.' + ich.sprache) || {}).status === 'fertig').length;
   knopf.textContent = t('{n} Audio-Guides offline gespeichert ✓', { n: fertig });
   sound.erfolg();
+}
+
+// ---------- Entdecken: öffentliche Reisepläne ----------
+const plaene = new Map(); // addr -> Plan (aus plaene.js)
+const planStats = {}; // addr -> { sterne, anzahl, kopien, bewertungen }
+const meineVeroeffentlicht = LS.get('sp.meinePlaene', {}); // Reise-ID -> { addr, id, n, text, autor, at }
+const bewertet = LS.get('sp.bewertet', {}); // addr -> Sterne
+LS.get('sp.plaene.feed', []).forEach((p) => plaene.set(p.addr, p)); // zuletzt gesehene Pläne, auch offline
+let planLadeNr = 0;
+
+// Die Bangkok-Liste vom Zettel als eingebauter Plan, damit "Entdecken" nie leer ist (ohne Hotel)
+const KLASSIKER = [{
+  addr: 'lokal:bangkok', lokal: true, n: 'Bangkok', e: BANGKOK.emoji, b: BANGKOK.bild, autor: 'Stempelpass',
+  ziel: { n: 'Bangkok', land: 'Thailand', cc: 'th', lat: BANGKOK.ort.lat, lng: BANGKOK.ort.lng, radius: 25 }, tage: null,
+  orte: BANGKOK.orte.filter((o) => o[1] !== 'hotel').map(([n, k, lat, lng]) => ({ n, k, lat, lng })),
+}];
+const planFinden = (addr) => plaene.get(addr) || KLASSIKER.find((p) => p.addr === addr) || null;
+const ortName = (o) => (o.nl && o.nl[ich.sprache]) || uebersetzterOrt(o.n, null, ich.sprache).n;
+const zahlText = (x) => x.toLocaleString(loc(), { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const sterneHtml = (wert) => `<span class="sterne" style="--w:${(wert / 5).toFixed(3)}" aria-hidden="true"></span>`;
+const ccAusFlagge = (e) => { const c = [...String(e || '')].map((x) => x.codePointAt(0) - 127397); return c.length === 2 && c.every((x) => x >= 65 && x <= 90) ? String.fromCharCode(...c).toLowerCase() : ''; };
+
+function planBild(p, groesse = 'orte') {
+  const titel = bildFuerTrip({ b: p.b, bf: p.bf, n: p.ziel.n }, groesse);
+  if (titel) return titel;
+  const o = p.orte.find((x) => bildFuerOrt(x, groesse));
+  return o ? bildFuerOrt(o, groesse) : null;
+}
+
+// Beliebte zuerst: Sterne (vorsichtig gewichtet, solange es wenige sind) und wie oft übernommen
+function planWert(p) {
+  const s = planStats[p.addr];
+  if (!s) return 3;
+  return (s.anzahl ? (s.sterne * s.anzahl + 3.5 * 2) / (s.anzahl + 2) : 3.5) + Math.log2(1 + s.kopien) * 0.4;
+}
+
+async function plaeneLaden() {
+  const z = ui.entdecken.ziel;
+  const nr = ++planLadeNr;
+  ui.entdecken.laedt = true; ui.entdecken.fehler = false;
+  neuZeichnen();
+  try {
+    const liste = await planeSuchen(z);
+    if (nr !== planLadeNr) return;
+    liste.forEach((p) => plaene.set(p.addr, p));
+    ui.entdecken.liste = liste.map((p) => p.addr);
+    if (!z) LS.set('sp.plaene.feed', liste.slice(0, 20));
+    neuZeichnen();
+    const eigene = Object.values(meineVeroeffentlicht).map((m) => m.addr);
+    Object.assign(planStats, await statistik([...new Set([...ui.entdecken.liste, ...eigene])]));
+  } catch (e) {
+    console.warn('Pläne', e);
+    if (nr === planLadeNr) { ui.entdecken.fehler = true; if (!ui.entdecken.liste) ui.entdecken.liste = z ? [] : LS.get('sp.plaene.feed', []).map((p) => p.addr); }
+  }
+  if (nr === planLadeNr) { ui.entdecken.laedt = false; neuZeichnen(); }
+}
+
+function planKarte(p) {
+  const s = planStats[p.addr];
+  const bild = planBild(p);
+  const passend = (ich.interessen || []).length && p.orte.filter((o) => passtZu(o.k, ich.interessen)).length >= p.orte.length / 2;
+  const unten = p.lokal ? esc(t('Von Stempelpass ausgewählt'))
+    : s ? [s.anzahl ? `${sterneHtml(s.sterne)} ${zahlText(s.sterne)} (${s.anzahl})` : esc(t('Noch keine Bewertung')), s.kopien ? esc(t('{n}× übernommen', { n: s.kopien })) : ''].filter(Boolean).join(' · ') : '';
+  return `<button class="plan-karte glas" data-plan="${esc(p.addr)}">
+    <span class="pl-bild">${bild ? `<img src="${esc(bild)}" alt="" loading="lazy">` : `<span class="cover-verlauf" style="background:${verlauf(p.addr)}">${esc(p.e || flagge(p.ziel.cc))}</span>`}
+      <span class="pl-chips"><span class="chip-glas">${flagge(p.ziel.cc)} ${esc(p.ziel.land || p.ziel.n)}</span>${passend ? `<span class="passt">${esc(t('Passt zu dir'))}</span>` : ''}</span></span>
+    <span class="pl-info"><b>${esc(p.n)}</b>
+      <small>${esc([p.autor ? t('von {autor}', { autor: p.autor }) : '', p.orte.length === 1 ? t('1 Ort') : t('{n} Orte', { n: p.orte.length }), p.tage ? (p.tage === 1 ? t('1 Tag') : t('{n} Tage', { n: p.tage })) : ''].filter(Boolean).join(' · '))}</small>
+      <span class="pl-stat">${unten}</span></span>
+  </button>`;
+}
+
+function entdeckenHtml() {
+  const e = ui.entdecken, z = e.ziel;
+  const liste = (e.liste || []).map((a) => plaene.get(a)).filter(Boolean).sort((a, b) => planWert(b) - planWert(a) || b.at - a.at);
+  const klassiker = KLASSIKER.filter((p) => !z || abstand(p.ziel, z) < 100000);
+  const eigene = Object.values(meineVeroeffentlicht).filter((m) => !liste.some((p) => p.addr === m.addr));
+  const leer = !e.laedt && !liste.length;
+  return `${seiteHg(null)}
+    <div class="grosstitel"><div><div class="unter">${esc(t('Reisepläne von anderen'))}</div><h1>${esc(t('Entdecken'))}</h1></div></div>
+    <div class="suchzeile">
+      <button class="suchfeld glas" data-aktion="zielwahl">${icon('suche', 18, 2.2)}<span>${esc(z ? z.n : t('Wohin soll es gehen?'))}</span></button>
+      ${z ? `<button class="kreisknopf glas" data-aktion="zielweg" aria-label="${esc(t('Alle Pläne'))}">${icon('x', 16, 2.4)}</button>` : ''}
+    </div>
+    ${e.laedt && !liste.length ? `<div class="leer-hinweis">${stempi({ stimmung: 'staunen', groesse: 70 })}<br>${esc(z ? t('Stempi sucht Pläne für {ziel} …', { ziel: z.n }) : t('Stempi sucht die neuesten Pläne …'))}</div>` : ''}
+    ${liste.length ? `<div class="abschnitt">${esc(z ? t('Pläne für {ziel}', { ziel: z.n }) : t('Neueste Pläne'))}</div><div class="plan-raster">${liste.map(planKarte).join('')}</div>` : ''}
+    ${leer ? `<div class="leer-reisen glas">${stempi({ stimmung: e.fehler ? 'schlaeft' : 'winken', groesse: 90 })}
+      <h2>${esc(e.fehler ? t('Gerade keine Verbindung') : z ? t('Noch kein Plan für {ziel}', { ziel: z.n }) : t('Noch keine Pläne'))}</h2>
+      <p>${esc(e.fehler ? t('Pläne von anderen brauchen kurz Internet.') : t('Sei der Erste: Leg eine Reise an und teile euren Plan mit allen.'))}</p>
+      <button class="knopf ${e.fehler ? '' : 'akzent'} voll" data-aktion="${e.fehler ? 'plaeneneu' : 'zielplan'}">${esc(e.fehler ? t('Nochmal versuchen') : z ? t('Plan für {ziel} erstellen', { ziel: z.n }) : t('Neue Reise'))}</button></div>` : ''}
+    ${klassiker.length ? `<div class="abschnitt">${esc(t('Stempelpass-Klassiker'))}</div><div class="plan-raster">${klassiker.map(planKarte).join('')}</div>` : ''}
+    ${eigene.length ? `<div class="abschnitt">${esc(t('Deine veröffentlichten Pläne'))}</div>${eigene.map((m) => `<button class="e-zeile glas eigen-plan" data-plan="${esc(m.addr)}"><span class="e-ico" style="background:#30c25a">${icon('globus', 18)}</span>${esc(m.n)}<span class="wert">${pfeilRechts(16)}</span></button>`).join('')}` : ''}
+    <p class="klein" style="text-align:center;margin-top:18px">${esc(t('Pläne sind öffentlich und ohne Konto – ohne Unterkünfte, Notizen und Fotos.'))}</p>`;
+}
+
+function planSeiteHtml(addr) {
+  const p = planFinden(addr);
+  if (!p) {
+    return `${seiteHg(null)}<div class="nav-zeile"><button class="kreisknopf glas" data-aktion="zurueck" aria-label="${esc(t('Zurück'))}">${icon('zurueck', 22, 2.3)}</button></div>
+      <div class="leer-hinweis">${stempi({ stimmung: 'staunen', groesse: 70 })}<br>${esc(t('Plan wird geladen …'))}</div>`;
+  }
+  const s = planStats[addr];
+  const eigen = !p.lokal && p.pk === meinPk();
+  const cover = planBild(p);
+  const tage = new Map();
+  [...p.orte].sort((a, b) => (a.tag || 99) - (b.tag || 99) || (a.reihe ?? 99) - (b.reihe ?? 99)).forEach((o) => {
+    const k = o.tag || 0;
+    if (!tage.has(k)) tage.set(k, []);
+    tage.get(k).push(o);
+  });
+  const ortZeile = (o) => `<div class="pl-ort">${bildFuerOrt(o, 'klein') ? `<img src="${esc(bildFuerOrt(o, 'klein'))}" alt="" loading="lazy">` : katKachel(o.k, 20)}<span><b>${esc(ortName(o))}</b><small>${esc(kat(o.k).name)}</small></span></div>`;
+  const tageHtml = [...tage.entries()].map(([tag, orte]) => `<div class="abschnitt">${esc(tag ? t('Tag {n}', { n: tag }) : tage.size > 1 ? t('Weitere Orte') : t('Orte'))}</div><div class="gruppe glas pl-tag">${orte.map(ortZeile).join('')}</div>`).join('');
+  const bewertungen = s && s.bewertungen.length ? `<div class="abschnitt">${esc(t('Bewertungen'))}</div>${s.bewertungen.slice(0, 20).map((b) => `<div class="bewertung glas">
+      <div class="bw-kopf">${sterneHtml(b.sterne)}<b>${esc(b.name || t('Reisende:r'))}</b><small>${esc(new Date(b.at * 1000).toLocaleDateString(loc(), { day: 'numeric', month: 'short', year: 'numeric' }))}</small></div>
+      ${b.gesamt ? `<small class="bw-gereist">${icon('haken', 13, 2.6)} ${esc(t('hat {e} von {n} Orten gestempelt', { e: b.erledigt || 0, n: b.gesamt }))}</small>` : ''}
+      ${b.text ? `<p>${esc(b.text)}</p>` : ''}</div>`).join('')}` : '';
+  const datum = p.at ? new Date(p.at * 1000).toLocaleDateString(loc(), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  return `${seiteHg(planBild(p, 'hg'))}
+    <div class="held">
+      ${cover ? `<img src="${esc(cover)}" alt="">` : `<div class="cover-verlauf" style="background:${verlauf(addr)}">${esc(p.e || flagge(p.ziel.cc))}</div>`}
+      <div class="nav-held"><button class="kreisknopf auf-bild" data-aktion="zurueck" aria-label="${esc(t('Zurück'))}">${icon('zurueck', 22, 2.3)}</button></div>
+      <div class="titel"><h1>${esc(p.n)}</h1>
+        <div class="unter"><span class="chip-glas">${flagge(p.ziel.cc)} ${esc(p.ziel.land || p.ziel.n)}</span><span class="chip-glas">${esc(p.orte.length === 1 ? t('1 Ort') : t('{n} Orte', { n: p.orte.length }))}</span>${p.tage ? `<span class="chip-glas">${esc(p.tage === 1 ? t('1 Tag') : t('{n} Tage', { n: p.tage }))}</span>` : ''}</div></div>
+    </div>
+    <div class="ueber-held">
+      <div class="plan-kopf glas">
+        <div class="pl-autor"><span class="avatar" style="background:${verlauf(p.pk || addr).match(/#[0-9a-f]{6}/i)[0]}">${esc((p.autor || '?').slice(0, 1).toUpperCase())}</span>
+          <span><b>${esc(p.autor || t('Unbekannt'))}</b><small>${esc(eigen ? t('Dein Plan') : p.lokal ? t('Von Stempelpass ausgewählt') : t('veröffentlicht am {datum}', { datum }))}</small></span></div>
+        ${p.lokal ? '' : `<div class="pl-zahlen">
+          <span><b>${s && s.anzahl ? zahlText(s.sterne) : '–'}</b><small>${s && s.anzahl ? sterneHtml(s.sterne) : esc(t('Sterne'))}</small></span>
+          <span><b>${s ? s.kopien : '–'}</b><small>${esc(t('übernommen'))}</small></span>
+          <span><b>${s ? s.anzahl : '–'}</b><small>${esc(t('Bewertungen'))}</small></span></div>`}
+        ${p.text ? `<p class="pl-text">${esc(p.text)}</p>` : ''}
+      </div>
+      <button class="knopf akzent voll" data-aktion="planuebernehmen" data-addr="${esc(addr)}">${icon('plus', 20)} ${esc(t('Plan übernehmen'))}</button>
+      ${eigen ? `<button class="knopf voll" data-aktion="planzurueckziehen" data-addr="${esc(addr)}" style="margin-top:8px;background:none;border:0;box-shadow:none;color:var(--rot)">${esc(t('Plan zurückziehen'))}</button>` : ''}
+      ${tageHtml}
+      ${bewertungen}
+    </div>`;
+}
+
+async function planOeffnen(addr) {
+  oeffnen({ s: 'plan', addr }, ui.tab);
+  if (addr.startsWith('lokal:')) return;
+  if (!plaene.has(addr)) { const p = await planHolen(addr).catch(() => null); if (p) plaene.set(addr, p); neuZeichnen(); }
+  if (!planStats[addr]) { Object.assign(planStats, await statistik([addr]).catch(() => ({}))); neuZeichnen(); }
+}
+
+// Ziel wählen, um nur Pläne für diese Gegend zu sehen
+function zielWahlDialog() {
+  const k = modal(`
+    <h2>${esc(t('Wohin soll es gehen?'))}</h2>
+    <input class="eingabe" id="eSuche" placeholder="${esc(t('Stadt, Region oder Land'))}" autocomplete="off" enterkeyhint="search">
+    <div class="ort-vorschlaege" id="eListe"></div>`);
+  const feld = k.querySelector('#eSuche'), liste = k.querySelector('#eListe');
+  let treffer = [], timer, nr = 0;
+  const los = async () => {
+    const q = feld.value.trim();
+    if (q.length < 2) return;
+    const meine = ++nr;
+    try { treffer = await zieleSuchen(q, ich.sprache); } catch { treffer = []; }
+    if (meine !== nr) return;
+    liste.innerHTML = treffer.map((z, i) => `<button class="glas" data-ziel="${i}"><span class="flagge">${flagge(z.cc) || '🗺️'}</span><span style="min-width:0"><b>${esc(z.n)}</b><small>${esc([z.typ === 'country' ? '' : z.region, z.typ === 'country' ? '' : z.land].filter(Boolean).join(' · '))}</small></span></button>`).join('')
+      || `<p class="klein">${esc(navigator.onLine ? t('Nichts gefunden.') : t('Dafür braucht es Internet.'))}</p>`;
+  };
+  feld.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(los, 400); });
+  feld.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(timer); los(); } });
+  liste.onclick = (e) => {
+    const b = e.target.closest('[data-ziel]');
+    if (!b) return;
+    sound.tick(); modalSchliessen();
+    ui.entdecken.ziel = treffer[+b.dataset.ziel];
+    ui.entdecken.liste = null;
+    plaeneLaden();
+  };
+  setTimeout(() => feld.focus(), 350);
+}
+
+function uebernehmenDialog(p) {
+  const k = modal(`
+    <div class="frage-kopf">${stempi({ stimmung: 'freude', groesse: 70 })}</div>
+    <h2 style="text-align:center;padding:0">${esc(t('Plan übernehmen'))}</h2>
+    <p class="lead" style="text-align:center">${esc(t('„{plan}“ wird eure eigene Reise mit allen {n} Orten. Danach könnt ihr alles ändern und abstempeln.', { plan: p.n, n: p.orte.length }))}</p>
+    <div class="zwei">
+      <label class="feld"><span>${esc(t('Von'))}</span><input class="eingabe" type="date" id="uVon"></label>
+      <label class="feld"><span>${esc(t('Bis'))}</span><input class="eingabe" type="date" id="uBis"></label>
+    </div>
+    <p class="klein">${esc(t('Mit Reisedaten verteilt Stempi die Orte passend auf eure Tage. Geht auch später.'))}</p>
+    <div class="knopf-reihe"><button class="knopf voll akzent" id="uOk">${esc(t('Übernehmen'))}</button></div>`);
+  k.querySelector('#uOk').onclick = () => planUebernehmen(p, k.querySelector('#uVon').value || null, k.querySelector('#uBis').value || null);
+}
+
+async function planUebernehmen(p, von, bis) {
+  modalSchliessen();
+  const id = await tripAnlegen(p.n, p.e || flagge(p.ziel.cc) || '🗺️');
+  const v = ansicht(id);
+  const tage = von ? tageAnzahl({ von, bis: bis || von }) : 0;
+  const mitTagen = p.orte.some((o) => o.tag);
+  const tageBleiben = mitTagen && (!tage || !p.tage || tage >= p.tage);
+  const meta = { ...v.meta, ort: { lat: p.ziel.lat, lng: p.ziel.lng }, radius: p.ziel.radius, cc: p.ziel.cc, land: p.ziel.land, bf: p.bf || null, von, bis: von ? (bis || von) : null };
+  if (p.b) meta.b = p.b;
+  if (!von && p.tage) meta.tage = p.tage;
+  if (!p.lokal) meta.vorlage = { addr: p.addr, autor: p.autor, n: p.n };
+  schreiben(id, 'meta', meta);
+  p.orte.forEach((o, i) => {
+    const neu = { n: o.n, k: o.k, lat: o.lat, lng: o.lng, o: i };
+    if (o.nl) neu.nl = o.nl;
+    if (o.wd) neu.wd = o.wd;
+    if (o.bf) neu.bf = o.bf;
+    if (tageBleiben && o.tag) { neu.tag = o.tag; neu.reihe = o.reihe ?? i; }
+    schreiben(id, 'p:' + zufall(8), neu);
+  });
+  if (tage && !tageBleiben) setTimeout(automatischPlanen, 300);
+  if (!p.lokal) kopieMelden(p.addr);
+  setTimeout(() => erfolg({
+    stempi: 'jubel', titel: t('Plan übernommen!'),
+    text: esc(t('{n} Orte sind jetzt in eurer Reise „{reise}“. Hol deine Mitreisenden dazu.', { n: p.orte.length, reise: p.n })),
+    knopf: t('Mitreisende einladen'), aktion: () => einladenDialog(), zweit: t('Später'), feiern: 'erfolg',
+  }), 500);
+}
+
+// Eigene Reise als öffentlichen Plan teilen
+const teilbareOrte = (v) => v.orte.filter((o) => o.k !== 'hotel' && o.lat != null);
+
+function veroeffentlichenDialog() {
+  const v = ansicht(aktuell);
+  const kandidaten = teilbareOrte(v);
+  if (kandidaten.length < 2) return toast(t('Für einen Plan braucht es mindestens 2 Orte mit Position'));
+  const schon = meineVeroeffentlicht[aktuell];
+  const k = modal(`
+    <div class="frage-kopf">${stempi({ stimmung: 'freude', groesse: 70 })}</div>
+    <h2 style="text-align:center;padding:0">${esc(schon ? t('Plan aktualisieren') : t('Plan mit allen teilen'))}</h2>
+    <p class="lead" style="text-align:center">${esc(t('Andere finden euren Plan unter „Entdecken“, können ihn übernehmen und bewerten.'))}</p>
+    <label class="feld"><span>${esc(t('Titel'))}</span><input class="eingabe" id="vTitel" maxlength="60" value="${esc(schon ? schon.n : v.meta.n)}"></label>
+    <label class="feld"><span>${esc(t('Was macht euren Plan besonders? (optional)'))}</span><textarea class="eingabe" id="vText" maxlength="400" rows="3">${esc(schon ? schon.text || '' : '')}</textarea></label>
+    <label class="feld"><span>${esc(t('Angezeigt als'))}</span><input class="eingabe" id="vAutor" maxlength="30" value="${esc(schon ? schon.autor || '' : ich.name)}" placeholder="${esc(t('z. B. Familie Weiß'))}"></label>
+    <div class="abschnitt">${esc(t('Diese Orte werden geteilt'))}</div>
+    <div id="vOrte">${kandidaten.map((o, i) => `<label class="sw-zeile">
+      <input type="checkbox" class="sw-haken" data-vo="${i}" ${o.k === 'sonst' ? '' : 'checked'}>
+      ${bildFuerOrt(o, 'klein') ? `<img src="${bildFuerOrt(o, 'klein')}" alt="" loading="lazy">` : katKachel(o.k, 22, 'sw-ico')}
+      <span style="min-width:0"><b>${esc(o.n)}</b><small>${esc(kat(o.k).name)}${o.tag ? ' · ' + esc(t('Tag {n}', { n: o.tag })) : ''}</small></span>
+      <span class="sw-mark">${icon('haken', 15, 3)}</span></label>`).join('')}</div>
+    <div class="ios-hinweis" style="display:flex;gap:8px;align-items:flex-start">${icon('schloss', 16)}<span>${esc(t('Nie geteilt: Unterkünfte, Notizen, Fotos, Tagebuch, Mitreisende und eure Stempel. Der Plan ist öffentlich – du kannst ihn jederzeit zurückziehen.'))}</span></div>
+    <div class="knopf-reihe" style="position:sticky;bottom:0"><button class="knopf voll akzent" id="vOk">${icon('globus', 19)} ${esc(schon ? t('Aktualisieren') : t('Veröffentlichen'))}</button></div>`);
+  const ok = k.querySelector('#vOk');
+  k.querySelector('#vOrte').addEventListener('change', () => { sound.tick(); fuehlen('leicht'); });
+  ok.onclick = async () => {
+    const gewaehlt = [...k.querySelectorAll('[data-vo]:checked')].map((c) => kandidaten[+c.dataset.vo]);
+    if (gewaehlt.length < 2) return toast(t('Wähl mindestens 2 Orte'));
+    if (!navigator.onLine) return toast(t('Dafür braucht es Internet.'));
+    const n = k.querySelector('#vTitel').value.trim() || v.meta.n;
+    const text = k.querySelector('#vText').value.trim();
+    const autor = k.querySelector('#vAutor').value.trim();
+    const mitte = tripMitte(v);
+    const r5 = (x) => Math.round(x * 1e5) / 1e5;
+    const plan = {
+      id: schon ? schon.id : zufall(12), n: n.slice(0, 60), e: v.meta.e, autor: autor.slice(0, 30), text: text.slice(0, 400),
+      ziel: { n: v.meta.n, land: v.meta.land || '', cc: v.meta.cc || ccAusFlagge(v.meta.e), lat: r5(mitte.lat), lng: r5(mitte.lng), radius: v.meta.radius || 15 },
+      tage: tageAnzahl(v.meta) || Math.max(0, ...gewaehlt.map((o) => o.tag || 0)) || null, bf: v.meta.bf || null,
+      orte: gewaehlt.map((o) => ({ n: o.orig, nl: o.nl || undefined, k: o.k, lat: r5(o.lat), lng: r5(o.lng), wd: o.wd || undefined, bf: o.bf || undefined, tag: o.tag || undefined, reihe: o.reihe ?? undefined })),
+    };
+    ok.disabled = true; ok.textContent = t('Wird veröffentlicht …');
+    let erg;
+    try { erg = await planVeroeffentlichen(plan); } catch (e) { console.warn(e); erg = { relays: 0 }; }
+    if (!erg.relays) { ok.disabled = false; ok.textContent = t('Nochmal versuchen'); return toast(t('Kein Relay erreichbar – Internet an?')); }
+    meineVeroeffentlicht[aktuell] = { addr: erg.addr, id: plan.id, n: plan.n, text: plan.text, autor: plan.autor, at: Date.now() };
+    LS.set('sp.meinePlaene', meineVeroeffentlicht);
+    plaene.set(erg.addr, { ...plan, addr: erg.addr, pk: meinPk(), at: Math.floor(Date.now() / 1000), orte: plan.orte.map((o) => ({ ...o, tag: o.tag || null, reihe: o.reihe ?? null })) });
+    if (ui.entdecken.liste && !ui.entdecken.liste.includes(erg.addr)) ui.entdecken.liste.unshift(erg.addr);
+    modalSchliessen();
+    erfolg({
+      stempi: 'jubel', titel: schon ? t('Plan aktualisiert!') : t('Euer Plan ist online!'),
+      text: esc(t('{n} Orte – {r} Server haben ihn gespeichert. Jetzt können andere ihn finden und übernehmen.', { n: plan.orte.length, r: erg.relays })),
+      knopf: t('Plan ansehen'), aktion: () => { tabZeigen('entdecken'); planOeffnen(erg.addr); }, zweit: t('Fertig'), feiern: 'stufe',
+    });
+    allesZeichnen();
+  };
+}
+
+async function planZurueckziehenFragen(addr) {
+  if (!confirm(t('Plan zurückziehen? Er verschwindet aus „Entdecken“. Wer ihn schon übernommen hat, behält seine Reise.'))) return;
+  const n = await planZurueckziehen(addr).catch(() => 0);
+  if (!n) return toast(t('Kein Relay erreichbar – Internet an?'));
+  for (const [id, m] of Object.entries(meineVeroeffentlicht)) if (m.addr === addr) delete meineVeroeffentlicht[id];
+  LS.set('sp.meinePlaene', meineVeroeffentlicht);
+  plaene.delete(addr);
+  if (ui.entdecken.liste) ui.entdecken.liste = ui.entdecken.liste.filter((a) => a !== addr);
+  LS.set('sp.plaene.feed', LS.get('sp.plaene.feed', []).filter((p) => p.addr !== addr));
+  sound.weg();
+  zurueck();
+  toast(t('Plan zurückgezogen'));
+}
+
+// In der Reise: teilen oder (bei übernommenen Plänen) bewerten
+function teilenHtml(v) {
+  const vl = v.meta && v.meta.vorlage;
+  const teile = [];
+  if (vl && !bewertet[vl.addr] && v.erledigt >= 1) {
+    teile.push(`<div class="bewerten-karte glas"><b>${esc(t('Wie war der Plan von {autor}?', { autor: vl.autor || t('Unbekannt') }))}</b>
+      <small>${esc(t('Deine Bewertung hilft anderen Reisenden.'))}</small>
+      <div class="sterne-wahl">${[1, 2, 3, 4, 5].map((n) => `<button data-sterne="${n}" aria-label="${n}">${icon('stern', 30, 1.6)}</button>`).join('')}</div></div>`);
+  }
+  const mein = meineVeroeffentlicht[v.id];
+  if (mein) {
+    const s = planStats[mein.addr];
+    teile.push(`<button class="knopf glas voll" data-aktion="meinplan" data-addr="${esc(mein.addr)}">${icon('globus', 19)} ${esc(t('Öffentlich'))}${s ? ` · ${s.anzahl ? '★ ' + zahlText(s.sterne) + ' · ' : ''}${esc(t('{n}× übernommen', { n: s.kopien }))}` : ''}</button>`);
+  } else if (!vl && teilbareOrte(v).length >= 2) {
+    teile.push(`<button class="knopf glas voll" data-aktion="veroeffentlichen">${icon('globus', 19)} ${esc(t('Plan mit allen teilen'))}</button>`);
+  }
+  return teile.join('');
+}
+
+function bewertenDialog(sterne) {
+  const v = ansicht(aktuell);
+  const vl = v.meta && v.meta.vorlage;
+  if (!vl) return;
+  let wert = sterne;
+  const k = modal(`
+    <div class="frage-kopf" id="bKopf">${stempi({ stimmung: sterne >= 4 ? 'jubel' : 'freude', groesse: 70 })}</div>
+    <h2 style="text-align:center;padding:0">${esc(t('Plan von {autor} bewerten', { autor: vl.autor || t('Unbekannt') }))}</h2>
+    <div class="sterne-wahl gross" id="bSterne">${[1, 2, 3, 4, 5].map((n) => `<button data-wert="${n}" class="${n <= wert ? 'an' : ''}" aria-label="${n}">${icon('stern', 36, 1.6)}</button>`).join('')}</div>
+    <label class="feld"><span>${esc(t('Was war gut, was würdest du ändern? (optional)'))}</span><textarea class="eingabe" id="bText" maxlength="280" rows="3"></textarea></label>
+    <p class="klein">${esc(t('Erscheint öffentlich mit dem Namen „{name}“ und wie viele Orte ihr gestempelt habt.', { name: ich.name || t('Reisende:r') }))}</p>
+    <div class="knopf-reihe"><button class="knopf voll akzent" id="bOk">${esc(t('Bewertung senden'))}</button></div>`);
+  k.querySelector('#bSterne').onclick = (e) => {
+    const b = e.target.closest('[data-wert]');
+    if (!b) return;
+    wert = +b.dataset.wert; sound.tick(); fuehlen('leicht');
+    k.querySelectorAll('#bSterne [data-wert]').forEach((x) => x.classList.toggle('an', +x.dataset.wert <= wert));
+    stimmung(k.querySelector('#bKopf'), wert >= 4 ? 'jubel' : wert >= 3 ? 'freude' : 'staunen', 0);
+  };
+  const ok = k.querySelector('#bOk');
+  ok.onclick = async () => {
+    ok.disabled = true; ok.textContent = t('Wird gesendet …');
+    const n = await bewerten(vl.addr, { sterne: wert, text: k.querySelector('#bText').value.trim(), name: ich.name, erledigt: v.erledigt, gesamt: v.orte.length }).catch(() => 0);
+    if (!n) { ok.disabled = false; ok.textContent = t('Nochmal versuchen'); return toast(t('Kein Relay erreichbar – Internet an?')); }
+    bewertet[vl.addr] = wert; LS.set('sp.bewertet', bewertet);
+    delete planStats[vl.addr];
+    modalSchliessen();
+    sound.erfolg(); fuehlen('erfolg'); konfetti({ menge: 70 });
+    toast(t('Danke! Deine Bewertung ist online.'));
+    allesZeichnen();
+  };
 }
 
 function tripMenue() {
@@ -2903,6 +3264,9 @@ async function start() {
   randWischen();
   stempiLeben({ beimAntippen: () => { sound.quietsch(); fuehlen('leicht'); } });
   passKippen();
+  // Sterne und Übernahmen der eigenen veröffentlichten Pläne für die Anzeige in der Reise
+  const eigene = Object.values(meineVeroeffentlicht).map((m) => m.addr);
+  if (eigene.length) setTimeout(() => statistik(eigene).then((s) => { Object.assign(planStats, s); neuZeichnen(); }).catch(() => {}), 2500);
   await karteStarten();
   map.once('load', () => allesZeigen(false));
   allesZeichnen();

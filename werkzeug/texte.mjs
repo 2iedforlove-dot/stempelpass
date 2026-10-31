@@ -5,7 +5,7 @@ import { KATEGORIEN } from '../vorlagen.js';
 
 const wurzel = new URL('../', import.meta.url);
 const texte = new Set();
-for (const f of ['app.js', 'onboarding.js', 'hinweise.js', 'rueckblick.js', 'route.js', 'audioguide.js', 'vorlieben.js', 'belohnung.js']) {
+for (const f of ['app.js', 'onboarding.js', 'hinweise.js', 'rueckblick.js', 'route.js', 'audioguide.js', 'vorlieben.js', 'belohnung.js', 'plaene.js']) {
   const s = readFileSync(new URL(f, wurzel), 'utf8');
   for (const m of s.matchAll(/\bt\('((?:[^'\\]|\\.)*)'/g)) texte.add(m[1].replace(/\\n/g, '\n'));
 }
