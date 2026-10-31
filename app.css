@@ -947,6 +947,24 @@ pre.codes { font: 600 14px/1.6 ui-monospace, Menlo, Consolas, monospace; backgro
 .qualitaet.einfach { background: var(--flaeche-3); color: var(--text-2); }
 .guide-kopf .stempi { margin: -6px -2px -4px 0; }
 
+/* ---------- Wanderstempel: Wandernadel und Vor-Ort-Stempel ---------- */
+.nadel-karte { padding: 14px 16px; border-radius: 24px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+.nadeln { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.nadel { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; --m1: #8d8d96; --m2: #c9c9d1; }
+.nadel.bronze { --m1: #9a5a26; --m2: #e3a56c; }
+.nadel.silber { --m1: #858d98; --m2: #eef1f5; }
+.nadel.gold { --m1: #c08a04; --m2: #ffe17a; }
+.nadel i { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: rgba(255, 255, 255, .9); background: var(--flaeche-2); border: 2px dashed var(--flaeche-3); transition: transform .4s var(--federnd); }
+.nadel.an i { background: radial-gradient(circle at 35% 30%, var(--m2), var(--m1) 75%); border: 2px solid color-mix(in srgb, var(--m1) 70%, #000); box-shadow: 0 6px 16px color-mix(in srgb, var(--m1) 45%, transparent), inset 0 1px 0 rgba(255, 255, 255, .6); color: #fff; }
+.nadel.an i .ic { fill: rgba(255, 255, 255, .85); }
+.nadel b { font-size: 13px; }
+.nadel small { font-size: 11.5px; color: var(--text-3); }
+.nadel.gross i { width: 96px; height: 96px; margin-bottom: 6px; }
+.nadel.gross i .ic { width: 44px; height: 44px; }
+.klein-nadeln { margin-top: 12px; }
+.ort.nein, .k-karte.nein { animation: nein .45s ease-in-out; }
+@keyframes nein { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+
 .loeschen-klein { width: 30px; height: 30px; margin: -6px -6px -6px 6px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--rot); vertical-align: middle; }
 .info-zeile small { color: var(--text-3); font-size: 12px; }
 

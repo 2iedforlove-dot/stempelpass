@@ -275,4 +275,12 @@ export const EN = {
   '{mb} MB sind auf deinem Handy. Ein Teil fehlt noch – tipp später im WLAN nochmal auf „Offline“.': '{mb} MB are on your phone. A part is still missing – tap “Offline” again later on Wi-Fi.',
   'Die Karte von {ziel} liegt jetzt auf deinem Handy ({mb} MB) – sie funktioniert auch ganz ohne Internet.': 'The map of {ziel} is now on your phone ({mb} MB) – it works without any internet.',
   'Offline-Karte von {ziel} gelöscht': 'Offline map of {ziel} deleted',
+  // Wanderstempel
+  'vor Ort': 'on site', 'Hier wird nur vor Ort gestempelt – Stempi sucht gerade deinen Standort …': 'Stamps here only count on site – Stempi is looking for your location …',
+  'Noch {weit} bis „{ort}“ – hier wird nur vor Ort gestempelt.': '{weit} to go to “{ort}” – stamps here only count on site.',
+  'Wandernadel in {stufe}!': 'Hiking badge in {stufe}!', '{ort} war deine {e}. Station von „{reise}“. {weiter}': '{ort} was station number {e} of “{reise}”. {weiter}',
+  'Alle Stationen geschafft – mehr geht nicht!': 'All stations done – it doesn’t get better than this!', 'Noch {n} bis {stufe}.': '{n} more to {stufe}.',
+  'ab {n}': 'from {n}', 'Gestempelt wird nur vor Ort.': 'Stamps only count on site.', 'Wanderstempel': 'Hiking stamps',
+  'Gestempelt wird nur vor Ort – das Handy prüft per GPS, ob du wirklich da bist.': 'Stamps only count on site – your phone checks by GPS that you are really there.',
+  'Bronze': 'Bronze', 'Silber': 'Silver', 'Gold': 'Gold',
 };

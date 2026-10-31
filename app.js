@@ -849,7 +849,7 @@ function segmenteHtml(v) {
 function ortKarte(v, o) {
   const d = entfernung(o);
   const unten = o.check
-    ? `<p class="von">${esc(name(v, o.check.by) === t('dir') ? t('Von dir') : t('Von {wer}', { wer: name(v, o.check.by) }))} · ${esc(wann(o.check.at))}</p>`
+    ? `<p class="von">${esc(name(v, o.check.by) === t('dir') ? t('Von dir') : t('Von {wer}', { wer: name(v, o.check.by) }))} · ${esc(wann(o.check.at))}${o.check.vorOrt ? ' · ' + esc(t('vor Ort')) : ''}</p>`
     : `<p><span class="kat-punkt" style="background:${kat(o.k).farbe}"></span> ${esc(kat(o.k).name)}${d != null ? ' · ' + meter(d) : ''}</p>`;
   return `<article class="ort ${o.check ? 'erledigt' : ''}" data-id="${esc(o.id)}">
     ${ortBild(o)}
@@ -903,6 +903,7 @@ function reiseHtml(id) {
           <div class="zeilen"><span>${leuteHtml(v, 6)}</span><span class="sync" style="height:auto;padding:0;background:none;border:0"><i></i><span></span></span></div>
         </div>
       </div>
+      ${nadelHtml(v)}
       ${bestenlisteHtml(v)}
       <div class="kacheln">
         <button class="kachel glas" data-aktion="aufkarte"><span class="k-ico" style="background:#0a84ff">${icon('karteTab')}</span>${esc(t('Karte'))}</button>
@@ -1508,10 +1509,27 @@ function homescreenDialog() {
 }
 
 // ---------- Abstempeln ----------
+// Wanderstempel: gestempelt wird nur vor Ort (meta.vorOrt = erlaubter Abstand in Metern).
+// Die Ortungsgenauigkeit zählt bis 100 m dazu, damit es auch unter Bäumen oder zwischen Häusern klappt.
+function vorOrtPruefen(v, o) {
+  if (!v.meta || !v.meta.vorOrt || o.lat == null) return { ok: true };
+  if (!pos) { standortFragen(false); return { ok: false, text: t('Hier wird nur vor Ort gestempelt – Stempi sucht gerade deinen Standort …') }; }
+  const d = abstand(pos, o);
+  const erlaubt = v.meta.vorOrt + Math.min(pos.genau || 0, 100);
+  if (d > erlaubt) return { ok: false, text: t('Noch {weit} bis „{ort}“ – hier wird nur vor Ort gestempelt.', { weit: meter(d - v.meta.vorOrt), ort: o.n }) };
+  return { ok: true, beweis: { vorOrt: true, d: Math.round(d) } };
+}
+
 function stempeln(id, knopf) {
   const v = ansicht(aktuell);
   const o = v.orte.find((x) => x.id === id);
   if (!o) return;
+  const vorOrt = o.check ? { ok: true } : vorOrtPruefen(v, o);
+  if (!vorOrt.ok) {
+    sound.weg(); fuehlen('weg');
+    document.querySelectorAll(`[data-stempel="${CSS.escape(id)}"]`).forEach((el) => { el.closest('.ort, .k-karte')?.classList.remove('nein'); void el.offsetWidth; el.closest('.ort, .k-karte')?.classList.add('nein'); });
+    return toast(vorOrt.text, null, null, 4200);
+  }
   if (!o.check && knopf) {
     // Tintenspritzer genau dort, wo der Stempel aufs Papier trifft
     const r = knopf.getBoundingClientRect();
@@ -1526,7 +1544,7 @@ function stempeln(id, knopf) {
     return;
   }
   const vorher = v.erledigt;
-  schreiben(aktuell, 'c:' + id, { ok: true, by: ich.id, at: Date.now() });
+  schreiben(aktuell, 'c:' + id, { ok: true, by: ich.id, at: Date.now(), ...(vorOrt.beweis || {}) });
   sound.stempel(); fuehlen('stempel');
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll(`[data-stempel="${CSS.escape(id)}"]`).forEach((el) => {
@@ -1558,14 +1576,18 @@ function stempelErfolg(id, vorher) {
   const fakt = fundstueck(o);
   const extra = (fuehrt ? `<div class="fuehrung">${icon('krone', 18, 2.2)} ${esc(t('Du führst jetzt in eurer Gruppe!'))}</div>` : '')
     + (fakt ? `<div class="fundstueck">${icon('funken', 18, 2)}<span><b>${esc(t('Wusstest du?'))}</b>${esc(fakt)}</span></div>` : '');
-  const titel = aufstieg ? t('Neue Stufe: {name}!', { name: stufenName(s1, t) })
+  // Wandernadel (Wanderstempel-Runden): Bronze, Silber, Gold ab einer bestimmten Zahl Stationen
+  const nadel = v.meta && v.meta.nadel ? NADELN.map((k, i) => [k, v.meta.nadel[i]]).find(([, ab]) => vorher < ab && e >= ab) : null;
+  const titel = nadel ? t('Wandernadel in {stufe}!', { stufe: t(NADEL_NAME[nadel[0]]) }) : aufstieg ? t('Neue Stufe: {name}!', { name: stufenName(s1, t) })
     : marke ? t(marke[1]) : sel === 'gold' ? t('Wow, ein Goldstempel!') : sel === 'silber' ? t('Ein Silberstempel!') : t('Gestempelt!');
   erfolg({
-    kopf: aufstieg ? `<div class="stufe-kopf">${stempi({ stimmung: 'jubel', groesse: 82 })}<div class="stufe-abzeichen">${s1.nr + 1}<small>${esc(t('STUFE'))}</small></div></div>` : '',
-    stempi: aufstieg ? null : marke || sel === 'gold' ? 'jubel' : sel === 'silber' ? 'staunen' : 'freude',
+    kopf: nadel ? `<div class="stufe-kopf">${stempi({ stimmung: 'jubel', groesse: 82 })}<div class="nadel gross ${nadel[0]} an"><i>${icon('stern', 40, 2)}</i></div></div>`
+      : aufstieg ? `<div class="stufe-kopf">${stempi({ stimmung: 'jubel', groesse: 82 })}<div class="stufe-abzeichen">${s1.nr + 1}<small>${esc(t('STUFE'))}</small></div></div>` : '',
+    stempi: nadel || aufstieg ? null : marke || sel === 'gold' ? 'jubel' : sel === 'silber' ? 'staunen' : 'freude',
     selten: sel,
     titel,
-    text: aufstieg ? esc(t('{ort} war dein {n}. Stempel. Als Nächstes: {name} ab {ab} Stempeln.', { ort: o.n, n: meine, name: stufenName(s1.naechste, t), ab: s1.naechste.ab }))
+    text: nadel ? esc(t('{ort} war deine {e}. Station von „{reise}“. {weiter}', { ort: o.n, e, reise: v.meta.n, weiter: nadelWeiter(v.meta.nadel, e) }))
+      : aufstieg ? esc(t('{ort} war dein {n}. Stempel. Als Nächstes: {name} ab {ab} Stempeln.', { ort: o.n, n: meine, name: stufenName(s1.naechste, t), ab: s1.naechste.ab }))
       : fertig ? esc(t('Alle {n} Orte von „{reise}“ – was für eine Reise!', { n, reise: v.meta.n })) : esc(t('{ort} · {e} von {n} geschafft, noch {rest} offen.', { ort: o.n, e, n, rest: n - e })),
     extra,
     fortschritt: { von: vorher / n, auf: e / n, links: t('{e} gestempelt', { e }), rechts: `${Math.round((e / n) * 100)} %` },
@@ -1574,8 +1596,25 @@ function stempelErfolg(id, vorher) {
     aktion: fertig ? rueckblickStarten : null,
     zweit: t('📷 Foto dazu'),
     zweitAktion: () => eintragDialog(id, true),
-    feiern: aufstieg ? 'stufe' : sel !== 'normal' ? sel : marke ? 'erfolg' : null,
+    feiern: nadel || aufstieg ? 'stufe' : sel !== 'normal' ? sel : marke ? 'erfolg' : null,
   });
+}
+
+const NADELN = ['bronze', 'silber', 'gold'];
+const NADEL_NAME = { bronze: 'Bronze', silber: 'Silber', gold: 'Gold' };
+function nadelWeiter(ab, e) {
+  const i = ab.findIndex((n) => e < n);
+  return i < 0 ? t('Alle Stationen geschafft – mehr geht nicht!') : t('Noch {n} bis {stufe}.', { n: ab[i] - e, stufe: t(NADEL_NAME[NADELN[i]]) });
+}
+
+// Fortschritt zur Wandernadel in der Reise
+function nadelHtml(v) {
+  if (!v.meta || !v.meta.nadel) return '';
+  const e = v.erledigt;
+  return `<div class="nadel-karte glas">
+    <div class="nadeln">${NADELN.map((k, i) => `<span class="nadel ${k} ${e >= v.meta.nadel[i] ? 'an' : ''}"><i>${icon('stern', 18, 2)}</i><b>${esc(t(NADEL_NAME[k]))}</b><small>${esc(t('ab {n}', { n: v.meta.nadel[i] }))}</small></span>`).join('')}</div>
+    <p class="klein">${esc(nadelWeiter(v.meta.nadel, e))}${v.meta.vorOrt ? ' ' + esc(t('Gestempelt wird nur vor Ort.')) : ''}</p>
+  </div>`;
 }
 
 // Alle eigenen Stempel über alle Reisen – die eine Zahl, die zählt
@@ -2239,6 +2278,25 @@ const KLASSIKER = [{
   addr: 'lokal:bangkok', lokal: true, n: 'Bangkok', e: BANGKOK.emoji, b: BANGKOK.bild, autor: 'Stempelpass',
   ziel: { n: 'Bangkok', land: 'Thailand', cc: 'th', lat: BANGKOK.ort.lat, lng: BANGKOK.ort.lng, radius: 25 }, tage: null,
   orte: BANGKOK.orte.filter((o) => o[1] !== 'hotel').map(([n, k, lat, lng]) => ({ n, k, lat, lng })),
+}, {
+  // Muster für das Pilotprojekt: ein digitaler Wanderstempel. Stationen und Fotos aus Wikidata/Wikimedia Commons.
+  addr: 'lokal:moedling', lokal: true, n: 'Mödlinger Stempelrunde', e: '🥾', autor: 'Stempelpass', vorOrt: 150, nadel: [4, 8, 12],
+  text: 'Zwölf Stationen zwischen Altstadt, Burgruine, Husarentempel und Anninger. Gestempelt wird nur vor Ort. Ab 4 Stempeln gibt es die Wandernadel in Bronze, ab 8 in Silber und mit allen 12 in Gold.',
+  ziel: { n: 'Mödling', land: 'Österreich', cc: 'at', lat: 48.0835, lng: 16.2755, radius: 5 }, tage: null,
+  orte: [
+    ['Altes Rathaus Mödling', 'kultur', 48.0855, 16.283, 'Q439511', 'Mödling - altes Rathaus (2).JPG'],
+    ['Thonetschlössl', 'kultur', 48.0867, 16.2879, 'Q1798990', 'Mödling 5628.jpg'],
+    ['Othmarkirche und Karner', 'kultur', 48.08523, 16.27997, 'Q2036977', 'Mödling - St.-Othmar-Kirche.JPG'],
+    ['Aquädukt Mödling', 'kultur', 48.0836, 16.2793, 'Q21881785', 'Aquädukt mödling + othmarkirche.JPG'],
+    ['Schönberg-Haus', 'kultur', 48.07929, 16.28447, 'Q22810395', 'Mödling 8327.jpg'],
+    ['Burgruine Mödling', 'aussicht', 48.07937, 16.26733, 'Q874783', 'Mödling - Burgruine (a).JPG'],
+    ['Breite Föhre', 'park', 48.0719, 16.27218, 'Q27667350', 'Josef Loewy - Breite Foehre bei Moedling.jpg'],
+    ['Husarentempel', 'aussicht', 48.07703, 16.25171, 'Q1638851', 'Mödling - Husarentempel (a).JPG'],
+    ['Seegrotte Hinterbrühl', 'wasser', 48.08583, 16.2575, 'Q667775', 'Seegrotte Austria 07.JPG'],
+    ['Kalenderberg', 'park', 48.0903, 16.2708, 'Q1722150', 'Moedlinger Klause sl7.jpg'],
+    ['Burg Liechtenstein', 'kultur', 48.0927, 16.27036, 'Q699474', 'Maria Enzersdorf - Burg Liechtenstein (1).JPG'],
+    ['Anninger', 'aussicht', 48.0475, 16.24583, 'Q567198', 'Anninger.jpg'],
+  ].map(([n, k, lat, lng, wd, bf], i) => ({ n, k, lat, lng, wd, bf, reihe: i })),
 }];
 const planFinden = (addr) => plaene.get(addr) || KLASSIKER.find((p) => p.addr === addr) || null;
 const ortName = (o) => (o.nl && o.nl[ich.sprache]) || uebersetzterOrt(o.n, null, ich.sprache).n;
@@ -2289,7 +2347,7 @@ function planKarte(p) {
     : s ? [s.anzahl ? `${sterneHtml(s.sterne)} ${zahlText(s.sterne)} (${s.anzahl})` : esc(t('Noch keine Bewertung')), s.kopien ? esc(t('{n}× übernommen', { n: s.kopien })) : ''].filter(Boolean).join(' · ') : '';
   return `<button class="plan-karte glas" data-plan="${esc(p.addr)}">
     <span class="pl-bild">${bild ? `<img src="${esc(bild)}" alt="" loading="lazy">` : `<span class="cover-verlauf" style="background:${verlauf(p.addr)}">${esc(p.e || flagge(p.ziel.cc))}</span>`}
-      <span class="pl-chips"><span class="chip-glas">${flagge(p.ziel.cc)} ${esc(p.ziel.land || p.ziel.n)}</span>${passend ? `<span class="passt">${esc(t('Passt zu dir'))}</span>` : ''}</span></span>
+      <span class="pl-chips"><span class="chip-glas">${flagge(p.ziel.cc)} ${esc(p.ziel.land || p.ziel.n)}</span>${p.nadel ? `<span class="chip-glas">${icon('stern', 14, 2.2)} ${esc(t('Wanderstempel'))}</span>` : ''}${passend ? `<span class="passt">${esc(t('Passt zu dir'))}</span>` : ''}</span></span>
     <span class="pl-info"><b>${esc(p.n)}</b>
       <small>${esc([p.autor ? t('von {autor}', { autor: p.autor }) : '', p.orte.length === 1 ? t('1 Ort') : t('{n} Orte', { n: p.orte.length }), p.tage ? (p.tage === 1 ? t('1 Tag') : t('{n} Tage', { n: p.tage })) : ''].filter(Boolean).join(' · '))}</small>
       <span class="pl-stat">${unten}</span></span>
@@ -2357,6 +2415,8 @@ function planSeiteHtml(addr) {
           <span><b>${s ? s.kopien : '–'}</b><small>${esc(t('übernommen'))}</small></span>
           <span><b>${s ? s.anzahl : '–'}</b><small>${esc(t('Bewertungen'))}</small></span></div>`}
         ${p.text ? `<p class="pl-text">${esc(p.text)}</p>` : ''}
+        ${p.nadel ? `<div class="nadeln klein-nadeln">${NADELN.map((k, i) => `<span class="nadel ${k} an"><i>${icon('stern', 16, 2)}</i><b>${esc(t(NADEL_NAME[k]))}</b><small>${esc(t('ab {n}', { n: p.nadel[i] }))}</small></span>`).join('')}</div>` : ''}
+        ${p.vorOrt ? `<p class="klein" style="display:flex;gap:6px;align-items:center;margin-top:10px">${icon('ortung', 15)}<span>${esc(t('Gestempelt wird nur vor Ort – das Handy prüft per GPS, ob du wirklich da bist.'))}</span></p>` : ''}
       </div>
       <button class="knopf akzent voll" data-aktion="planuebernehmen" data-addr="${esc(addr)}">${icon('plus', 20)} ${esc(t('Plan übernehmen'))}</button>
       ${eigen ? `<button class="knopf voll" data-aktion="planzurueckziehen" data-addr="${esc(addr)}" style="margin-top:8px;background:none;border:0;box-shadow:none;color:var(--rot)">${esc(t('Plan zurückziehen'))}</button>` : ''}
@@ -2427,6 +2487,8 @@ async function planUebernehmen(p, von, bis) {
   if (p.b) meta.b = p.b;
   if (!von && p.tage) meta.tage = p.tage;
   if (!p.lokal) meta.vorlage = { addr: p.addr, autor: p.autor, n: p.n };
+  if (p.vorOrt) meta.vorOrt = p.vorOrt;
+  if (p.nadel) meta.nadel = p.nadel;
   schreiben(id, 'meta', meta);
   p.orte.forEach((o, i) => {
     const neu = { n: o.n, k: o.k, lat: o.lat, lng: o.lng, o: i };
@@ -3403,8 +3465,12 @@ async function start() {
   const einladung = m && normCode(m[1]);
   let schonDa = false;
   if (einladung) { const keys = await deriveKeys(einladung); schonDa = trips.has(keys.id); if (schonDa) { aktuell = keys.id; oeffnen({ s: 'reise', trip: keys.id }, 'reisen'); } }
-  if (!ich.eingerichtet) einfuehrung(einladung && !schonDa ? einladung : null);
-  else if (einladung && !schonDa) tripBeitreten(einladung);
+  // Link auf einen Plan, z. B. vom Plakat einer Wanderstempel-Runde: ?plan=lokal:moedling
+  const planLink = para.get('plan');
+  if (planLink) history.replaceState(null, '', location.pathname);
+  const planZeigen = () => { if (planLink && /^(lokal:[a-z]+|30078:[0-9a-f]{64}:stempelpass-plan:[a-z0-9]+)$/.test(planLink)) { tabZeigen('entdecken'); planOeffnen(planLink); } };
+  if (!ich.eingerichtet) einfuehrung(einladung && !schonDa ? einladung : null).then(planZeigen);
+  else { if (einladung && !schonDa) tripBeitreten(einladung); planZeigen(); }
 
   trips.forEach((_, id) => mitgliedEintragen(id));
   if (navigator.permissions) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') ortungStarten(false); }).catch(() => {});
@@ -3424,4 +3490,4 @@ async function start() {
 start();
 
 // Für Tests in der Konsole
-window.sp = { trips, sync, ansicht: () => ansicht(aktuell), ich, ui, get map() { return map; }, einfuehrung };
+window.sp = { trips, sync, ansicht: () => ansicht(aktuell), ich, ui, get map() { return map; }, einfuehrung, standortSetzen: (p) => { pos = p; neuZeichnen(); } };

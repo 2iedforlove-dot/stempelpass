@@ -15,7 +15,7 @@ const { INTERESSEN, TEMPI } = await import(new URL('vorlieben.js', wurzel));
 INTERESSEN.forEach((x) => texte.add(x.name)); TEMPI.forEach((x) => texte.add(x[1]));
 ['Neuling', 'Entdecker', 'Abenteurer', 'Weltenbummler', 'Globetrotter', 'Legende'].forEach((x) => texte.add(x));
 ['Alles gestempelt!', 'Fast geschafft!', 'Halbzeit!', 'Guter Start!', 'Gestempelt!', 'Reisen', 'Karte', 'Profil', 'Alle', 'Offen', 'Erledigt', 'Nähe', 'Suchen', 'Liste', 'Ohne Ort', 'Orte', 'Plan', 'Tagebuch', 'Gehen', 'Fahren', 'Rad', 'Überblick', 'Geschichte', 'Architektur', 'Legenden', 'Fun Facts', 'Links abbiegen', 'Rechts abbiegen', 'Leicht links halten', 'Leicht rechts halten', 'Scharf links abbiegen', 'Scharf rechts abbiegen', 'Geradeaus weiter', 'Wenden', 'Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag',
-  'Guten Morgen', 'Hallo', 'Guten Abend', 'Gute Nacht', 'Guten Morgen, {name}', 'Hallo, {name}', 'Guten Abend, {name}', 'Gute Nacht, {name}'].forEach((x) => texte.add(x));
+  'Bronze', 'Silber', 'Gold', 'Guten Morgen', 'Hallo', 'Guten Abend', 'Gute Nacht', 'Guten Morgen, {name}', 'Hallo, {name}', 'Guten Abend, {name}', 'Gute Nacht, {name}'].forEach((x) => texte.add(x));
 
 const { EN } = await import(new URL('i18n.js', wurzel));
 const fehlt = [...texte].filter((x) => !(x in EN));
