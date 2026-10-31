@@ -7,6 +7,7 @@ import { konfetti as partikelKonfetti, spritzer, glitzer } from './partikel.js';
 import { stufe, stufenName, seltenheit, bestenliste } from './belohnung.js';
 import { vorliebenHtml, vorliebenKlick, nachInteressen, passtZu, interessenText, orteProTag } from './vorlieben.js';
 import { planeSuchen, planHolen, statistik, planVeroeffentlichen, planZurueckziehen, bewerten, kopieMelden, meinPk } from './plaene.js';
+import { weltProtokoll, weltSchichten, regionKacheln, regionLaden, regionLoeschen, schaetzeBytes, ATTRIBUTION as WELT_ATTRIBUTION } from './weltkarte.js';
 import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
 import { fotoVerkleinern, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl } from './tagebuch.js';
@@ -237,7 +238,10 @@ const akzentFarbe = () => (AKZENTE[ich.akzent] || AKZENTE.orange)[1];
 // ---------- Karte ----------
 const protokoll = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', protokoll.tile);
-let offlineKarte = false;
+// Weltkarte (OpenFreeMap) für alle Ziele außerhalb von Bangkok, mit eigenem Offline-Speicher
+maplibregl.addProtocol('welt', weltProtokoll());
+let offlineKarte = false; // Bangkok-Datei gespeichert?
+const regionen = LS.get('sp.regionen', {}); // Reise-ID -> { n, kacheln: ['z/x/y'], bytes, at, teilweise }
 let kartenUrl = null;
 let kartenHell = null;
 
@@ -277,24 +281,28 @@ function kartenStil(url, hell) {
   // Statt zweizeilig "Englisch + Thai": Name in der gewählten Sprache, sonst Englisch; Namen in fremder Schrift (script gesetzt) ausblenden
   const nameAusdruck = ['coalesce', ['get', 'name:' + ich.sprache], ['get', 'name:en'], ['case', ['has', 'script'], '', ['get', 'name']]];
   for (const l of schichten) if (l.layout && l.layout['text-field'] && JSON.stringify(l.layout['text-field']).includes('"name')) l.layout['text-field'] = nameAusdruck;
-  const grund = hell ? '#eceef3' : '#161618';
+  // Die Weltkarte kennt keine Landflächen-Ebene: der Hintergrund ist das Land
+  const grund = f.earth;
+  const welt = weltSchichten(f, ich.sprache, hell).map((l) => ({ ...l, layout: { ...(l.layout || {}), visibility: 'none' } }));
   return {
     version: 8,
     glyphs: abs('karte/fonts/') + '{fontstack}/{range}.pbf',
     sprite: abs('karte/sprites/' + (hell ? 'light' : 'dark')),
     sources: {
-      osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 19, attribution: '© OpenStreetMap' },
+      welt: { type: 'vector', tiles: ['welt://{z}/{x}/{y}'], minzoom: 0, maxzoom: 14, attribution: WELT_ATTRIBUTION },
       protomaps: { type: 'vector', url, attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>' },
     },
     layers: [
       { id: 'grund', type: 'background', paint: { 'background-color': grund } },
-      { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: 'none' }, paint: hell ? { 'raster-saturation': -0.4 } : { 'raster-saturation': -1, 'raster-brightness-max': 0.35 } },
+      ...welt,
       ...schichten,
     ],
   };
 }
 
 const imGebiet = (lng, lat) => lng > REGION.bbox[0] && lng < REGION.bbox[2] && lat > REGION.bbox[1] && lat < REGION.bbox[3];
+const istBangkok = (v) => { const m = v && tripMitte(v); return !!m && imGebiet(m.lng, m.lat); };
+const offlineFuer = (v) => (istBangkok(v) ? offlineKarte : !!(v && regionen[v.id]));
 
 let map;
 let karteBereit = false;
@@ -309,8 +317,19 @@ async function karteStarten() {
     attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false,
   });
   map.touchZoomRotate.disableRotation();
+  // Fehlende Weltkarten-Kacheln offline sind gewollt: MapLibre sucht dann eine Stufe gröber weiter,
+  // aber nur bei der nächsten Aktualisierung – die stoßen wir an, solange die Karte stillsteht
+  let nachlauf = null;
+  map.on('error', (e) => {
+    if (e.sourceId === 'welt' || /^(offline|Kachel)/.test((e.error && e.error.message) || '')) {
+      clearTimeout(nachlauf);
+      nachlauf = setTimeout(() => { if (!map.isMoving()) map.jumpTo({ center: map.getCenter() }); }, 120);
+      return;
+    }
+    console.warn('Karte', e.error || e);
+  });
   map.on('moveend', osmUmschalten);
-  map.on('style.load', () => { osmUmschalten(); ebenenAnlegen(); karteBereit = true; pinSchluessel = ''; routeSchluessel = ''; pinsZeichnen(); ichZeichnen(); wegZeichnen(); });
+  map.on('style.load', () => { quelleBangkok = null; osmUmschalten(); ebenenAnlegen(); karteBereit = true; pinSchluessel = ''; routeSchluessel = ''; pinsZeichnen(); ichZeichnen(); wegZeichnen(); });
   map.on('click', (e) => {
     if (auswahlAktiv || Date.now() - langGedrueckt < 800) return;
     const id = pinBei(e.point);
@@ -329,11 +348,19 @@ function karteNeuStylen() {
   map.setStyle(kartenStil(kartenUrl, kartenHell), { diff: false });
 }
 
+// In Bangkok die Protomaps-Karte (auch die gespeicherte 64-MB-Datei), sonst die Weltkarte.
+// Nur umschalten, wenn sich etwas ändert – das sind gut 60 Ebenen.
+let quelleBangkok = null;
 function osmUmschalten() {
-  if (!map.getLayer('osm')) return;
+  if (!map.getLayer('grund')) return;
   const c = map.getCenter();
-  const sichtbar = !imGebiet(c.lng, c.lat) || map.getZoom() < 7;
-  map.setLayoutProperty('osm', 'visibility', sichtbar && navigator.onLine ? 'visible' : 'none');
+  const bangkok = imGebiet(c.lng, c.lat) && (map.getZoom() >= 7 || !navigator.onLine);
+  if (bangkok === quelleBangkok) return;
+  quelleBangkok = bangkok;
+  for (const l of map.getStyle().layers) {
+    if (l.source === 'welt') map.setLayoutProperty(l.id, 'visibility', bangkok ? 'none' : 'visible');
+    else if (l.source === 'protomaps') map.setLayoutProperty(l.id, 'visibility', bangkok ? 'visible' : 'none');
+  }
 }
 
 // Pins sind eine Kartenebene (WebGL) statt HTML-Elemente: dadurch kleben sie fest an der Karte und wackeln nicht
@@ -841,9 +868,10 @@ function reiseHtml(id) {
   if (ui.filter === 'offen') liste = liste.filter((o) => !o.check);
   if (ui.filter === 'erledigt') liste = liste.filter((o) => o.check).sort((a, b) => b.check.at - a.check.at);
   if (ui.filter === 'naehe') liste = [...liste].filter((o) => o.lat != null).sort((a, b) => entfernung(a) - entfernung(b));
-  const offline = offlineKarte
+  const region = !istBangkok(v) && regionen[v.id];
+  const offline = offlineFuer(v) && !(region && region.teilweise)
     ? `<button class="kachel glas" data-aktion="sync"><span class="k-ico" style="background:#30c25a">${icon('wolkeOk')}</span>${esc(t('Offline ✓'))}</button>`
-    : laedt
+    : laedt && ladeReise === (istBangkok(v) ? 'bangkok' : v.id)
       ? `<button class="kachel glas" data-aktion="offline" style="--f:${ladeAnteil}"><span class="k-ico" style="background:#bf5af2">${icon('wolke')}</span>${Math.round(ladeAnteil * 100)} %<span class="fortschritt"><i></i></span></button>`
       : `<button class="kachel glas" data-aktion="offline"><span class="k-ico" style="background:#bf5af2">${icon('wolke')}</span>${esc(t('Offline'))}<span class="punkt"></span></button>`;
   const leer = !v.meta
@@ -1311,7 +1339,7 @@ function profilHtml() {
       <label class="e-zeile"><span class="e-ico" style="background:#30b0c7">${icon('vibration', 18)}</span>${esc(t('Vibration'))}<input type="checkbox" class="schalter" data-schalter="vibration" ${ich.vibration !== false ? 'checked' : ''}></label>
     </div>
     <div class="gruppe glas">
-      ${zeile('sync', '#0a84ff', t('Sync & Offline-Karte'), `${esc(offlineKarte ? t('Offline ✓') : t('nur online'))} ${pfeilRechts(16)}`, 'sync')}
+      ${zeile('sync', '#0a84ff', t('Sync & Offline-Karten'), `${esc((() => { const n = Object.keys(regionen).length + (offlineKarte ? 1 : 0); return n ? t('{n} offline', { n }) : t('nur online'); })())} ${pfeilRechts(16)}`, 'sync')}
       ${zeile('homescreen', '#ff2d78', t('Zum Startbildschirm hinzufügen'), `${esc(istApp ? t('Installiert ✓') : '')} ${pfeilRechts(16)}`, 'homescreen')}
       ${zeile('rakete', '#bf5af2', t('Einführung ansehen'), pfeilRechts(16), 'einfuehrung')}
       ${zeile('bild', '#8e8e93', t('Bildnachweise'), pfeilRechts(16), 'nachweise')}
@@ -1345,6 +1373,11 @@ function strassenName(roh, ref) {
     for (const f of map.querySourceFeatures('protomaps', { sourceLayer: 'roads' })) {
       const p = f.properties;
       if (p.name && !m.has(p.name)) m.set(p.name, p);
+    }
+    // Weltkarte: dort heißt die lateinische Umschrift name:latin
+    for (const f of map.querySourceFeatures('welt', { sourceLayer: 'transportation_name' })) {
+      const p = f.properties;
+      if (p.name && !m.has(p.name)) m.set(p.name, { ...p, 'name:en': p['name:en'] || p['name:latin'] });
     }
     strassenCache = { zeit: Date.now(), map: m };
   }
@@ -1844,9 +1877,9 @@ async function tripBeitreten(code) {
       erfolg({
         icon: 'leute', titel: t('Willkommen in der Reise!'),
         text: esc(t('„{reise}“ · {n} Orte · dabei: {wer}', { reise: v.meta.n, n: v.orte.length, wer: v.leute.map((l) => l.n).join(', ') })),
-        knopf: offlineKarte ? t('Los geht’s') : t('Karte offline speichern · {mb} MB', { mb: REGION.mb }),
-        aktion: offlineKarte ? null : karteHerunterladen,
-        zweit: offlineKarte ? null : t('Später'),
+        knopf: offlineFuer(v) ? t('Los geht’s') : istBangkok(v) ? t('Karte offline speichern · {mb} MB', { mb: REGION.mb }) : t('Karte offline speichern'),
+        aktion: offlineFuer(v) ? null : karteHerunterladen,
+        zweit: offlineFuer(v) ? null : t('Später'),
       });
     }
   }, 500);
@@ -1875,6 +1908,7 @@ function tripEntfernen(id) {
   trips.delete(id);
   LS.del('sp.trip.' + id);
   idbLoeschenPraefix(id + '|').catch(() => {});
+  if (regionen[id]) weltKarteLoeschen(id); // Speicherplatz für die Offline-Karte freigeben
   if (aktuell === id) aktuell = trips.size ? [...trips.keys()][0] : null;
   tripListeSpeichern();
   while (ui.stapel.reisen.length > 1) zurueck('reisen', true);
@@ -2664,21 +2698,33 @@ function einladenDialog() {
 function syncDialog() {
   const v = ansicht(aktuell);
   const mitglieder = v ? v.leute.map((l) => esc(l.n) + (l.id === ich.id ? ` (${esc(t('du'))})` : '')).join(', ') : '–';
+  const mb = (b) => (b / 1e6).toLocaleString(loc(), { maximumFractionDigits: 1 }) + ' MB';
+  const karten = [
+    ...(offlineKarte ? [`<div class="info-zeile"><span>${esc(t('Bangkok bis Ayutthaya'))}</span><span>${REGION.mb} MB ✓</span></div>`] : []),
+    ...Object.entries(regionen).map(([id, r]) => `<div class="info-zeile"><span>${esc(r.n || '?')}${r.teilweise ? ` <small>(${esc(t('teilweise'))})</small>` : ''}</span><span>${mb(r.bytes || 0)} <button class="loeschen-klein" data-regionweg="${esc(id)}" aria-label="${esc(t('Löschen'))}">${icon('muell', 16)}</button></span></div>`),
+  ];
+  const hierFehlt = v && v.meta && (!offlineFuer(v) || (regionen[v.id] && regionen[v.id].teilweise));
   modal(`
     <h2>${esc(t('Sync & Offline'))}</h2>
     <p class="lead">${esc(sync.online ? t('Verbunden – Stempel kommen live bei allen an.') : t('Gerade offline. Alles wird auf dem Handy gespeichert und automatisch abgeglichen, sobald wieder Internet da ist.'))}</p>
     <div class="info-zeile"><span>${esc(t('Sync-Server verbunden'))}</span><span>${sync.online} / ${sync.relays.length}</span></div>
     <div class="info-zeile"><span>${esc(t('Noch nicht hochgeladen'))}</span><span>${v ? v.ausstehend : 0}</span></div>
-    <div class="info-zeile"><span>${esc(t('Offline-Karte Bangkok'))}</span><span>${esc(offlineKarte ? t('gespeichert ✓') : t('nicht gespeichert'))}</span></div>
     <div class="info-zeile"><span>${esc(t('Dabei'))}</span><span>${mitglieder || '–'}</span></div>
+    <div class="abschnitt" style="margin-top:16px">${esc(t('Offline-Karten auf diesem Handy'))}</div>
+    ${karten.join('') || `<p class="klein">${esc(t('Noch keine – die Karte braucht gerade Internet.'))}</p>`}
     <p class="klein" style="margin-top:14px">${esc(t('Eure Daten liegen Ende-zu-Ende-verschlüsselt auf mehreren öffentlichen Nostr-Relays. Ohne den Code kann niemand sie lesen.'))}</p>
     <div class="knopf-reihe">
-      ${offlineKarte ? '' : `<button class="knopf voll akzent" id="sKarte">${icon('wolke', 20)} ${esc(t('Offline-Karte laden ({mb} MB)', { mb: REGION.mb }))}</button>`}
+      ${hierFehlt ? `<button class="knopf voll akzent" id="sKarte">${icon('wolke', 20)} ${esc(istBangkok(v) ? t('Offline-Karte laden ({mb} MB)', { mb: REGION.mb }) : t('Karte von {ziel} offline speichern', { ziel: v.meta.n }))}</button>` : ''}
       ${'speechSynthesis' in window && v ? `<button class="knopf voll" id="sGuides">${icon('kopfhoerer', 20)} ${esc(t('Audio-Guides offline speichern'))}</button>` : ''}
     </div>`,
   (k) => {
-    const b = k.querySelector('#sKarte'); if (b) b.onclick = () => { modalSchliessen(); karteHerunterladen(); };
+    const b = k.querySelector('#sKarte'); if (b) b.onclick = () => { modalSchliessen(); setTimeout(karteHerunterladen, 300); };
     const g = k.querySelector('#sGuides'); if (g) g.onclick = () => { g.disabled = true; guidesOfflineLaden(g); };
+    k.querySelectorAll('[data-regionweg]').forEach((x) => { x.onclick = async () => {
+      if (!confirm(t('Offline-Karte von {ziel} löschen? Mit Internet funktioniert die Karte weiter.', { ziel: regionen[x.dataset.regionweg].n }))) return;
+      await weltKarteLoeschen(x.dataset.regionweg);
+      x.closest('.info-zeile').remove();
+    }; });
   });
 }
 
@@ -2687,7 +2733,7 @@ async function nachweiseDialog() {
   try { n = await (await fetch('bilder/nachweise.json')).json(); } catch {}
   modal(`
     <h2>${esc(t('Bildnachweise'))}</h2>
-    <p class="lead">${esc(t('Fotos von Wikimedia Commons unter freien Lizenzen. Kartendaten © OpenStreetMap, Karte von Protomaps, Wetter von Open-Meteo.'))}</p>
+    <p class="lead">${esc(t('Fotos von Wikimedia Commons unter freien Lizenzen. Kartendaten © OpenStreetMap, Karten von Protomaps und OpenFreeMap (OpenMapTiles), Wetter von Open-Meteo.'))}</p>
     ${Object.values(n).map((x) => `<div class="nachweis"><b>${esc(x.datei.replace(/^File:/, ''))}</b><br>${esc(x.urheber || '?')} · ${esc(x.lizenz)} · <a href="${esc(x.seite)}" target="_blank" rel="noopener">Commons</a></div>`).join('')}`);
 }
 
@@ -3150,10 +3196,83 @@ function ortsDrossel() { if (Date.now() - ortsZeit > 8000) { ortsZeit = Date.now
 // ---------- Offline-Karte ----------
 let laedt = false;
 let ladeAnteil = 0;
-async function karteHerunterladen() {
+let ladeReise = null; // welche Reise gerade ihre Karte lädt
+
+// Bangkok hat eine fertige Kartendatei, alle anderen Ziele bekommen ihren Ausschnitt der Weltkarte
+function karteHerunterladen() {
+  const v = aktuell && ansicht(aktuell);
+  if (!v || istBangkok(v)) return bangkokKarteLaden();
+  return weltKarteDialog(v);
+}
+
+function weltKarteDialog(v) {
+  if (laedt) return toast(t('Es wird schon eine Karte gespeichert …'));
+  if (regionen[v.id] && !regionen[v.id].teilweise) return syncDialog();
+  const mitte = tripMitte(v);
+  if (!mitte) return toast(t('Leg zuerst einen Ort an oder wähle ein Ziel'));
+  const kacheln = regionKacheln(mitte, v.orte.filter((o) => o.lat != null));
+  const mb = Math.max(1, Math.round(schaetzeBytes(kacheln) / 1e6));
+  const k = modal(`
+    <div class="frage-kopf">${stempi({ stimmung: 'freude', groesse: 72 })}</div>
+    <h2 style="text-align:center;padding:0">${esc(t('Karte von {ziel} offline speichern', { ziel: v.meta ? v.meta.n : '' }))}</h2>
+    <p class="lead" style="text-align:center">${esc(t('Rund um eure {n} Orte mit allen Straßen, dazu die Umgebung. Danach funktioniert die Karte ganz ohne Internet.', { n: v.orte.filter((o) => o.lat != null).length }))}</p>
+    <div class="info-zeile"><span>${esc(t('Kartenstücke'))}</span><span>${kacheln.length.toLocaleString(loc())}</span></div>
+    <div class="info-zeile"><span>${esc(t('Download etwa'))}</span><span>${mb} MB</span></div>
+    <p class="klein" style="margin-top:12px">${esc(t('Am besten im WLAN. Kartendaten von OpenFreeMap und OpenStreetMap.'))}</p>
+    <div class="knopf-reihe"><button class="knopf voll akzent" id="wOk">${icon('wolke', 20)} ${esc(t('Jetzt speichern'))}</button></div>`);
+  k.querySelector('#wOk').onclick = () => { modalSchliessen(); weltKarteLaden(v.id, kacheln); };
+}
+
+async function weltKarteLaden(id, kacheln) {
+  if (laedt) return;
+  if (!navigator.onLine) return toast(t('Dafür braucht es Internet – am besten WLAN'));
+  laedt = true; ladeAnteil = 0; ladeReise = id;
+  toast(t('Offline-Karte wird gespeichert …'));
+  neuZeichnen();
+  let zuletzt = 0;
+  try {
+    try { await navigator.storage.persist(); } catch {}
+    const erg = await regionLaden(kacheln, ({ fertig, gesamt }) => {
+      ladeAnteil = fertig / gesamt;
+      if (ladeAnteil - zuletzt > 0.03) { zuletzt = ladeAnteil; neuZeichnen(); }
+    });
+    const v = ansicht(id);
+    regionen[id] = { n: v && v.meta ? v.meta.n : '', kacheln: erg.kacheln, bytes: erg.gespeichert, at: Date.now(), teilweise: erg.teilweise };
+    LS.set('sp.regionen', regionen);
+    laedt = false; ladeReise = null;
+    neuZeichnen();
+    sound.erfolg(); fuehlen('erfolg');
+    erfolg({
+      stempi: 'jubel', titel: erg.teilweise ? t('Karte größtenteils gespeichert') : t('Offline bereit'),
+      text: esc(erg.teilweise
+        ? t('{mb} MB sind auf deinem Handy. Ein Teil fehlt noch – tipp später im WLAN nochmal auf „Offline“.', { mb: (erg.gespeichert / 1e6).toLocaleString(loc(), { maximumFractionDigits: 1 }) })
+        : t('Die Karte von {ziel} liegt jetzt auf deinem Handy ({mb} MB) – sie funktioniert auch ganz ohne Internet.', { ziel: regionen[id].n, mb: (erg.gespeichert / 1e6).toLocaleString(loc(), { maximumFractionDigits: 1 }) })),
+      knopf: t('Super'), feiern: 'erfolg',
+    });
+  } catch (e) {
+    console.warn(e);
+    laedt = false; ladeReise = null;
+    neuZeichnen();
+    toast(t('Download abgebrochen – später nochmal versuchen'));
+  }
+}
+
+async function weltKarteLoeschen(id) {
+  const r = regionen[id];
+  if (!r) return;
+  delete regionen[id];
+  LS.set('sp.regionen', regionen);
+  const gebraucht = new Set(Object.values(regionen).flatMap((x) => x.kacheln));
+  await regionLoeschen(r.kacheln, gebraucht).catch(() => {});
+  sound.weg();
+  toast(t('Offline-Karte von {ziel} gelöscht', { ziel: r.n }));
+  neuZeichnen();
+}
+
+async function bangkokKarteLaden() {
   if (laedt || offlineKarte) return;
   if (!navigator.onLine) return toast(t('Dafür braucht es Internet – am besten WLAN'));
-  laedt = true; ladeAnteil = 0;
+  laedt = true; ladeAnteil = 0; ladeReise = 'bangkok';
   toast(t('Offline-Karte wird gespeichert …'));
   neuZeichnen();
   let zuletzt = 0;
@@ -3180,13 +3299,13 @@ async function karteHerunterladen() {
     const quelle = map.getSource('protomaps');
     if (quelle && quelle.setUrl) quelle.setUrl(kartenUrl);
     offlineKarte = true;
-    laedt = false;
+    laedt = false; ladeReise = null;
     neuZeichnen();
     sound.erfolg(); fuehlen('erfolg');
     erfolg({ icon: 'wolkeOk', titel: t('Offline bereit'), text: esc(t('Die Karte von Bangkok bis Ayutthaya liegt jetzt auf deinem Handy – sie funktioniert auch ganz ohne Internet.')), knopf: t('Super') });
   } catch (e) {
     console.warn(e);
-    laedt = false;
+    laedt = false; ladeReise = null;
     neuZeichnen();
     toast(t('Download abgebrochen – später nochmal versuchen'));
   }

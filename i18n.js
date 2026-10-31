@@ -263,4 +263,16 @@ export const EN = {
   'Öffentlich': 'Public', 'Plan von {autor} bewerten': 'Rate the plan by {autor}', 'Was war gut, was würdest du ändern? (optional)': 'What was good, what would you change? (optional)',
   'Erscheint öffentlich mit dem Namen „{name}“ und wie viele Orte ihr gestempelt habt.': 'Shown publicly with the name “{name}” and how many places you stamped.',
   'Bewertung senden': 'Send rating', 'Wird gesendet …': 'Sending …', 'Danke! Deine Bewertung ist online.': 'Thanks! Your rating is live.',
+  // Offline-Karten weltweit
+  'Sync & Offline-Karten': 'Sync & offline maps', '{n} offline': '{n} offline', 'Karte offline speichern': 'Save map offline', 'Bangkok bis Ayutthaya': 'Bangkok to Ayutthaya',
+  'teilweise': 'partial', 'Löschen': 'Delete', 'Offline-Karten auf diesem Handy': 'Offline maps on this phone', 'Noch keine – die Karte braucht gerade Internet.': 'None yet – the map needs internet for now.',
+  'Karte von {ziel} offline speichern': 'Save the map of {ziel} offline', 'Offline-Karte von {ziel} löschen? Mit Internet funktioniert die Karte weiter.': 'Delete the offline map of {ziel}? The map keeps working with internet.',
+  'Fotos von Wikimedia Commons unter freien Lizenzen. Kartendaten © OpenStreetMap, Karten von Protomaps und OpenFreeMap (OpenMapTiles), Wetter von Open-Meteo.': 'Photos from Wikimedia Commons under free licences. Map data © OpenStreetMap, maps by Protomaps and OpenFreeMap (OpenMapTiles), weather by Open-Meteo.',
+  'Es wird schon eine Karte gespeichert …': 'A map is already being saved …',
+  'Rund um eure {n} Orte mit allen Straßen, dazu die Umgebung. Danach funktioniert die Karte ganz ohne Internet.': 'Every street around your {n} places, plus the surroundings. After that the map works without any internet.',
+  'Kartenstücke': 'Map tiles', 'Download etwa': 'Download about', 'Am besten im WLAN. Kartendaten von OpenFreeMap und OpenStreetMap.': 'Best on Wi-Fi. Map data from OpenFreeMap and OpenStreetMap.',
+  'Jetzt speichern': 'Save now', 'Karte größtenteils gespeichert': 'Map mostly saved',
+  '{mb} MB sind auf deinem Handy. Ein Teil fehlt noch – tipp später im WLAN nochmal auf „Offline“.': '{mb} MB are on your phone. A part is still missing – tap “Offline” again later on Wi-Fi.',
+  'Die Karte von {ziel} liegt jetzt auf deinem Handy ({mb} MB) – sie funktioniert auch ganz ohne Internet.': 'The map of {ziel} is now on your phone ({mb} MB) – it works without any internet.',
+  'Offline-Karte von {ziel} gelöscht': 'Offline map of {ziel} deleted',
 };

@@ -947,6 +947,9 @@ pre.codes { font: 600 14px/1.6 ui-monospace, Menlo, Consolas, monospace; backgro
 .qualitaet.einfach { background: var(--flaeche-3); color: var(--text-2); }
 .guide-kopf .stempi { margin: -6px -2px -4px 0; }
 
+.loeschen-klein { width: 30px; height: 30px; margin: -6px -6px -6px 6px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--rot); vertical-align: middle; }
+.info-zeile small { color: var(--text-3); font-size: 12px; }
+
 /* ---------- Entdecken: öffentliche Reisepläne ---------- */
 .suchzeile { display: flex; gap: 8px; margin-bottom: 6px; }
 .suchfeld { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 16px; border-radius: 25px; font-size: 16px; font-weight: 550; color: var(--text-2); text-align: left; }
