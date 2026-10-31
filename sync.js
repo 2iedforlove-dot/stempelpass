@@ -112,7 +112,7 @@ export class Sync {
       for (const [tripId, t] of this.getTrips()) this.req(r, tripId, t.keys);
       this.status();
     };
-    ws.onclose = () => { if (r.ws !== ws) return; r.open = false; this.status(); this.retry(r); };
+    ws.onclose = () => { if (r.ws !== ws) return; r.open = false; r.warte = []; r.inWarte = new Set(); this.status(); this.retry(r); };
     ws.onerror = () => {};
     ws.onmessage = (m) => { r.q = (r.q || Promise.resolve()).then(() => this.message(r, m.data)).catch(() => {}); };
   }
@@ -123,7 +123,24 @@ export class Sync {
     r.timer = setTimeout(() => this.connect(r), wait);
   }
 
-  send(r, msg) { if (r.open && r.ws.readyState === 1) r.ws.send(JSON.stringify(msg)); }
+  send(r, msg) {
+    if (!r.open || r.ws.readyState !== 1) return;
+    if (msg[0] !== 'EVENT') return r.ws.send(JSON.stringify(msg));
+    // Viele Fotostücke auf einmal beantworten manche Relays mit einer Sperre: höchstens 8 Events pro Sekunde
+    if (!r.warte) { r.warte = []; r.inWarte = new Set(); }
+    if (r.inWarte.has(msg[1].id)) return;
+    r.inWarte.add(msg[1].id);
+    r.warte.push(msg);
+    if (!r.pumpe) this.pumpen(r);
+  }
+
+  pumpen(r) {
+    const msg = r.warte.shift();
+    if (!msg) { r.pumpe = null; return; }
+    r.inWarte.delete(msg[1].id);
+    if (r.open && r.ws.readyState === 1) r.ws.send(JSON.stringify(msg));
+    r.pumpe = setTimeout(() => this.pumpen(r), 125);
+  }
 
   subId(tripId) { return 'sp' + tripId; }
 

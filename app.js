@@ -10,9 +10,10 @@ import { planeSuchen, planHolen, statistik, planVeroeffentlichen, planZurueckzie
 import { weltProtokoll, weltSchichten, regionKacheln, regionLaden, regionLoeschen, schaetzeBytes, ATTRIBUTION as WELT_ATTRIBUTION } from './weltkarte.js';
 import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
-import { fotoVerkleinern, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl } from './tagebuch.js';
+import { fotoVorbereiten, inStuecke, idbSetzen, idbHolen, idbLoeschenPraefix, fotoUrl, hdSetzen, hdLoeschen, hdUrl } from './tagebuch.js';
 import { hinweiseFuer } from './hinweise.js';
 import { starteRueckblick } from './rueckblick.js';
+import { fotobuchZeigen } from './fotobuch.js';
 import { icon, PFADE } from './icons.js';
 import { sound, haptik, tonAn, tonSetzen } from './feedback.js';
 import { t, setzeSprache, loc } from './i18n.js';
@@ -1075,12 +1076,32 @@ function tagWahlDialog(id) {
 }
 
 // ---------- Tagebuch ----------
+// Fotos eines Eintrags: seit v18 eine Liste, ältere Einträge haben genau ein Foto unter der Eintrags-ID
+const fotosVon = (e) => e.fotos || (e.anzahl ? [{ id: e.id, n: e.anzahl, w: e.w, h: e.h }] : []);
+const fotoBild = (v, f) => fotoUrl(v.tr.data.records, f.id, f.n);
+const MAX_FOTOS = 30;
+const lokalIso = (ms) => { const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+
+// Bis zu vier Fotos als Mosaik, der Rest als „+n“ auf dem letzten
+function mosaikHtml(v, e) {
+  const fotos = fotosVon(e);
+  if (!fotos.length) return '';
+  const zeigen = fotos.slice(0, 4);
+  const kachel = (f, i) => {
+    const url = fotoBild(v, f);
+    const mehr = i === zeigen.length - 1 && fotos.length > zeigen.length ? `<span class="m-mehr">+${fotos.length - zeigen.length}</span>` : '';
+    return `<button class="m-foto" data-foto="${esc(e.id)}" data-i="${i}" aria-label="${esc(t('Foto ansehen'))}">${url ? `<img src="${url}" alt="" loading="lazy" decoding="async">` : `<span class="m-laedt">${icon('kamera', 22)}<small>${esc(t('Foto lädt …'))}</small></span>`}${mehr}</button>`;
+  };
+  const seite = (f) => (f.w && f.h ? f.w / f.h : 4 / 3);
+  const verh = zeigen.length === 1 ? Math.max(0.62, seite(zeigen[0])) : zeigen.length === 2 ? Math.min(2.1, Math.max(1.15, seite(zeigen[0]) + seite(zeigen[1]))) : zeigen.length === 3 ? 4 / 3 : 1;
+  return `<div class="mosaik n${zeigen.length}" style="aspect-ratio:${verh.toFixed(3)}">${zeigen.map(kachel).join('')}</div>`;
+}
+
 function eintragHtml(v, e, mitOrt = true) {
   const o = e.ort && v.orte.find((x) => x.id === e.ort);
-  const url = e.anzahl ? fotoUrl(v.tr.data.records, e.id, e.anzahl) : null;
   const wer = name(v, e.by) === t('dir') ? t('Du') : name(v, e.by);
   return `<article class="eintrag glas" data-eintrag="${esc(e.id)}">
-    ${e.anzahl ? (url ? `<img class="foto" src="${url}" alt="" style="aspect-ratio:${e.w || 4}/${e.h || 3}">` : `<div class="foto laedt" style="aspect-ratio:${e.w || 4}/${e.h || 3}">${icon('kamera', 28)}<small>${esc(t('Foto lädt …'))}</small></div>`) : ''}
+    ${mosaikHtml(v, e)}
     <div class="eintrag-text">
       ${e.text ? `<p>${esc(e.text)}</p>` : ''}
       <div class="eintrag-fuss">${leuteHtml({ leute: v.leute.filter((l) => l.id === e.by) }, 1)}<span>${esc(wer)} · ${esc(wann(e.at))}</span>${mitOrt && o ? `<button class="chip" data-ortlink="${esc(o.id)}">${icon(kat(o.k).id, 13)} ${esc(o.n)}</button>` : ''}</div>
@@ -1100,67 +1121,274 @@ function tagebuchHtml(v) {
     if (!gruppen.length || gruppen[gruppen.length - 1].tag !== tag) gruppen.push({ tag, liste: [] });
     gruppen[gruppen.length - 1].liste.push(e.html);
   }
-  return `<div class="zwei">
-      <button class="knopf akzent" data-aktion="foto">${icon('kamera', 19)} ${esc(t('Foto'))}</button>
+  const fotoZahl = v.eintraege.reduce((s, e) => s + fotosVon(e).length, 0);
+  return `${fotoZahl || v.erledigt ? `<button class="rb-banner buch-banner glas" data-aktion="fotobuch"><span class="rb-play">${icon('buch', 20, 2.2)}</span><span><b>${esc(t('Euer Fotobuch'))}</b><small>${esc(fotoZahl ? t('{n} Fotos · automatisch gestaltet · als PDF', { n: fotoZahl }) : t('Automatisch gestaltet · als PDF'))}</small></span>${pfeilRechts()}</button>` : ''}
+    <div class="zwei">
+      <button class="knopf akzent" data-aktion="foto">${icon('kamera', 19)} ${esc(t('Fotos'))}</button>
       <button class="knopf glas" data-aktion="notiz">${icon('notiz', 19)} ${esc(t('Notiz'))}</button>
     </div>
     ${gruppen.length ? gruppen.map((g) => `<div class="abschnitt">${esc(g.tag)}</div>${g.liste.join('')}`).join('')
       : `<div class="leer-hinweis">${icon('buch', 30)}${esc(t('Euer Reisetagebuch ist noch leer. Stempelt Orte, macht Fotos und schreibt kurze Notizen – alle sehen sie.'))}</div>`}`;
 }
 
-// Foto oder Notiz anlegen; ort: Orts-ID oder null
-function eintragDialog(ort, mitFoto) {
-  const v = ansicht(aktuell);
-  const waehlen = () => new Promise((ok) => {
+function dateienWaehlen() {
+  return new Promise((ok) => {
     const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*';
-    inp.onchange = () => ok(inp.files[0] || null);
+    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+    inp.onchange = () => ok([...inp.files]);
+    inp.addEventListener('cancel', () => ok([]));
     inp.click();
   });
-  const zeigen = (foto) => {
-    const k = modal(`
-      <h2>${esc(foto ? t('Foto ins Tagebuch') : t('Notiz ins Tagebuch'))}</h2>
-      ${foto ? `<img class="foto vorschau" src="data:image/jpeg;base64,${foto.daten}" alt="">` : ''}
-      <label class="feld"><span>${esc(t('Text'))}</span><textarea class="eingabe" id="tText" rows="3" placeholder="${esc(t('Was war besonders?'))}"></textarea></label>
-      <label class="feld"><span>${esc(t('Ort'))}</span><select class="eingabe" id="tOrt"><option value="">${esc(t('Ohne Ort'))}</option>${v.orte.map((o) => `<option value="${esc(o.id)}" ${o.id === ort ? 'selected' : ''}>${esc(o.n)}</option>`).join('')}</select></label>
-      <button class="knopf voll akzent" id="tOk">${esc(t('Speichern'))}</button>`);
-    k.querySelector('#tOk').onclick = () => {
-      const text = k.querySelector('#tText').value.trim().slice(0, 600);
-      if (!foto && !text) return toast(t('Schreib etwas oder wähle ein Foto'));
-      const id = zufall(8);
-      if (foto) inStuecke(foto.daten).forEach((d, i) => schreiben(aktuell, `fb:${id}:${i}`, { d }));
-      schreiben(aktuell, 'f:' + id, { ort: k.querySelector('#tOrt').value || null, text, at: Date.now(), by: ich.id, anzahl: foto ? Math.ceil(foto.daten.length / 26000) : 0, w: foto ? foto.w : null, h: foto ? foto.h : null });
-      modalSchliessen();
-      sound.plopp(); fuehlen('mittel');
-      toast(t('Im Tagebuch gespeichert'));
-    };
-    setTimeout(() => k.querySelector('#tText').focus({ preventScroll: true }), 400);
+}
+
+// Fotos und/oder Text ins Tagebuch. ort: Orts-ID oder null; alt: bestehender Eintrag zum Bearbeiten
+function eintragDialog(ort, mitFoto, alt) {
+  if (mitFoto && !alt) return dateienWaehlen().then((d) => { if (d.length) eintragFormular(ort, null, d); });
+  eintragFormular(ort, alt, []);
+}
+
+function eintragFormular(ort, alt, dateien) {
+  const v = ansicht(aktuell);
+  const tripId = aktuell;
+  const liste = alt ? fotosVon(alt).map((f) => ({ ...f, url: fotoBild(v, f) })) : [];
+  const entfernt = [];
+  let laedt = 0, wannAngefasst = !!alt;
+  const k = modal(`
+    <h2>${esc(alt ? t('Eintrag bearbeiten') : dateien.length ? t('Fotos ins Tagebuch') : t('Notiz ins Tagebuch'))}</h2>
+    <div class="foto-raster" id="tFotos"></div>
+    <label class="feld"><span>${esc(t('Text'))}</span><textarea class="eingabe" id="tText" rows="3" placeholder="${esc(t('Was war besonders?'))}">${esc(alt ? alt.text || '' : '')}</textarea></label>
+    <div class="feld-paar">
+      <label class="feld"><span>${esc(t('Ort'))}</span><select class="eingabe" id="tOrt"><option value="">${esc(t('Ohne Ort'))}</option>${v.orte.map((o) => `<option value="${esc(o.id)}" ${o.id === (alt ? alt.ort : ort) ? 'selected' : ''}>${esc(o.n)}</option>`).join('')}</select></label>
+      <label class="feld"><span>${esc(t('Wann'))}</span><input class="eingabe" type="datetime-local" id="tWann" value="${lokalIso(alt ? alt.at : Date.now())}"></label>
+    </div>
+    <button class="knopf voll akzent" id="tOk">${esc(t('Speichern'))}</button>`);
+  const raster = k.querySelector('#tFotos');
+  const wannFeld = k.querySelector('#tWann');
+  wannFeld.oninput = () => { wannAngefasst = true; };
+  const zeichnen = () => {
+    raster.innerHTML = liste.map((f, i) => `<div class="fr-kachel${i === 0 ? ' erst' : ''}" data-fi="${i}">
+        ${f.url ? `<img src="${f.url}" alt="">` : `<span class="m-laedt">${icon('kamera', 20)}</span>`}
+        ${i === 0 && liste.length > 1 ? `<span class="fr-titel">${esc(t('Groß'))}</span>` : ''}
+        <button class="fr-weg" data-fweg="${i}" aria-label="${esc(t('Foto entfernen'))}">${icon('x', 14, 2.6)}</button>
+      </div>`).join('')
+      + Array.from({ length: laedt }, () => '<div class="fr-kachel laedt"><span class="fr-kreis"></span></div>').join('')
+      + (liste.length + laedt < MAX_FOTOS ? `<button class="fr-neu" id="tMehr">${icon('plus', 22, 2.2)}<small>${esc(liste.length ? t('Mehr') : t('Fotos'))}</small></button>` : '');
+    raster.classList.toggle('leer', !liste.length && !laedt);
   };
-  if (!mitFoto) return zeigen(null);
-  waehlen().then(async (datei) => {
-    if (!datei) return;
+  const vorbereiten = async (neu) => {
+    neu = neu.slice(0, MAX_FOTOS - liste.length - laedt);
+    if (!neu.length) return;
     sound.foto();
-    try { zeigen(await fotoVerkleinern(datei)); } catch { toast(t('Foto konnte nicht gelesen werden')); }
-  });
+    laedt += neu.length; zeichnen();
+    let fehler = 0;
+    for (const d of neu) {
+      try { const f = await fotoVorbereiten(d); liste.push({ neu: true, ...f, url: URL.createObjectURL(f.hd) }); } catch { fehler++; }
+      laedt--; zeichnen();
+    }
+    if (fehler) toast(t('{n} Foto(s) konnten nicht gelesen werden', { n: fehler }));
+    // Datum aus den Fotos übernehmen, solange niemand es selbst gesetzt hat
+    const zeiten = liste.map((f) => f.at).filter(Boolean);
+    if (!wannAngefasst && zeiten.length) wannFeld.value = lokalIso(Math.min(...zeiten));
+  };
+  raster.onclick = async (e) => {
+    const weg = e.target.closest('[data-fweg]');
+    if (weg) {
+      const [f] = liste.splice(+weg.dataset.fweg, 1);
+      if (!f.neu) entfernt.push(f);
+      sound.weg(); fuehlen('leicht');
+      return zeichnen();
+    }
+    if (e.target.closest('#tMehr')) return vorbereiten(await dateienWaehlen());
+    // Antippen macht ein Foto zum ersten (großen) im Eintrag
+    const kachel = e.target.closest('[data-fi]');
+    if (kachel && +kachel.dataset.fi > 0) {
+      liste.unshift(...liste.splice(+kachel.dataset.fi, 1));
+      sound.tick(); fuehlen('leicht');
+      zeichnen();
+    }
+  };
+  k.querySelector('#tOk').onclick = () => {
+    if (laedt) return toast(t('Moment, die Fotos werden noch vorbereitet …'));
+    const text = k.querySelector('#tText').value.trim().slice(0, 600);
+    if (!liste.length && !text) return toast(t('Schreib etwas oder wähle ein Foto'));
+    const id = alt ? alt.id : zufall(8);
+    const fotos = liste.map((f, i) => {
+      if (!f.neu) return { id: f.id, n: f.n, w: f.w, h: f.h, ...(f.at ? { at: f.at } : {}) };
+      // Das erste Foto eines neuen Eintrags liegt unter der Eintrags-ID, damit auch ältere App-Stände es zeigen
+      const fid = !alt && i === 0 ? id : zufall(8);
+      const teile = inStuecke(f.daten);
+      teile.forEach((d, j) => schreiben(tripId, `fb:${fid}:${j}`, { d }));
+      hdSetzen(tripId, fid, f.hd).catch(() => {});
+      return { id: fid, n: teile.length, w: f.w, h: f.h, ...(f.at ? { at: f.at } : {}) };
+    });
+    for (const f of entfernt) {
+      for (let j = 0; j < f.n; j++) schreiben(tripId, `fb:${f.id}:${j}`, { d: null, weg: true });
+      hdLoeschen(tripId, f.id).catch(() => {});
+    }
+    const at = new Date(wannFeld.value).getTime() || Date.now();
+    const erst = fotos[0];
+    schreiben(tripId, 'f:' + id, { ort: k.querySelector('#tOrt').value || null, text, at, by: alt ? alt.by : ich.id, fotos,
+      anzahl: erst && erst.id === id ? erst.n : 0, w: erst ? erst.w : null, h: erst ? erst.h : null });
+    if (fotos.length && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    modalSchliessen();
+    sound.plopp(); fuehlen('mittel');
+    toast(alt ? t('Gespeichert') : fotos.length > 1 ? t('{n} Fotos im Tagebuch', { n: fotos.length }) : t('Im Tagebuch gespeichert'));
+  };
+  zeichnen();
+  if (dateien.length) vorbereiten(dateien);
+  else if (!alt) setTimeout(() => k.querySelector('#tText').focus({ preventScroll: true }), 400);
 }
 
 function eintragAnsehen(id) {
   const v = ansicht(aktuell);
   const e = v.eintraege.find((x) => x.id === id);
   if (!e) return;
-  const k = modal(`${eintragHtml(v, e)}<div class="knopf-reihe"><button class="knopf voll rot" id="eWeg">${icon('muell', 19)} ${esc(t('Aus dem Tagebuch löschen'))}</button></div>`);
+  const k = modal(`${eintragHtml(v, e)}<div class="zwei" style="margin-top:12px">
+      <button class="knopf glas" id="eBearb">${icon('stift', 18)} ${esc(t('Bearbeiten'))}</button>
+      <button class="knopf glas rot" id="eWeg">${icon('muell', 18)} ${esc(t('Löschen'))}</button></div>`);
+  k.querySelector('#eBearb').onclick = () => { modalSchliessen(); setTimeout(() => eintragDialog(null, false, e), 280); };
   k.querySelector('#eWeg').onclick = () => {
     const rec = trips.get(aktuell).data.records['f:' + id];
     schreiben(aktuell, 'f:' + id, { ...rec.v, weg: true });
-    for (let i = 0; i < (e.anzahl || 0); i++) schreiben(aktuell, `fb:${id}:${i}`, { d: null, weg: true });
+    for (const f of fotosVon(e)) {
+      for (let i = 0; i < f.n; i++) schreiben(aktuell, `fb:${f.id}:${i}`, { d: null, weg: true });
+      hdLoeschen(aktuell, f.id).catch(() => {});
+    }
     modalSchliessen(); sound.weg(); fuehlen('weg');
   };
 }
 
+// Vollbild zum Durchwischen aller Fotos eines Eintrags (große Fassung, wenn sie auf diesem Gerät liegt)
+function fotoBetrachter(eintragId, start = 0) {
+  const v = ansicht(aktuell);
+  const e = v && v.eintraege.find((x) => x.id === eintragId);
+  if (!e) return;
+  const fotos = fotosVon(e);
+  const o = e.ort && v.orte.find((x) => x.id === e.ort);
+  const el = document.createElement('div');
+  el.className = 'betrachter';
+  el.innerHTML = `
+    <div class="bt-spur">${fotos.map((f) => `<figure>${fotoBild(v, f) ? `<img src="${fotoBild(v, f)}" alt="">` : `<span class="m-laedt">${icon('kamera', 30)}</span>`}</figure>`).join('')}</div>
+    <div class="bt-oben"><span class="bt-zahl"></span><button class="bt-zu" aria-label="${esc(t('Schließen'))}">${icon('x', 20, 2.4)}</button></div>
+    ${e.text || o ? `<div class="bt-text">${e.text ? `<p>${esc(e.text)}</p>` : ''}<small>${esc([name(v, e.by) === t('dir') ? t('Du') : name(v, e.by), wann(e.at), o && o.n].filter(Boolean).join(' · '))}</small></div>` : ''}`;
+  document.body.appendChild(el);
+  const spur = el.querySelector('.bt-spur');
+  const zahl = el.querySelector('.bt-zahl');
+  const aktualisieren = () => { const i = Math.round(spur.scrollLeft / spur.clientWidth); zahl.textContent = fotos.length > 1 ? `${i + 1} / ${fotos.length}` : ''; };
+  spur.addEventListener('scroll', aktualisieren, { passive: true });
+  requestAnimationFrame(() => { spur.scrollLeft = start * spur.clientWidth; aktualisieren(); });
+  fotos.forEach((f, i) => hdUrl(v.id, f.id).then((u) => { const img = spur.children[i].querySelector('img'); if (u && img) img.src = u; }));
+  const zu = () => { el.classList.add('weg'); removeEventListener('keydown', taste); setTimeout(() => el.remove(), 260); };
+  const taste = (ev) => {
+    if (ev.key === 'Escape') zu();
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') spur.scrollBy({ left: (ev.key === 'ArrowRight' ? 1 : -1) * spur.clientWidth, behavior: 'smooth' });
+  };
+  addEventListener('keydown', taste);
+  el.querySelector('.bt-zu').onclick = zu;
+  sound.auf();
+}
+
 function rueckblickStarten() {
   const v = ansicht(aktuell);
-  const fotos = v.eintraege.filter((e) => e.anzahl).map((e) => ({ url: fotoUrl(v.tr.data.records, e.id, e.anzahl), text: e.text })).filter((f) => f.url).reverse();
+  const fotos = [...v.eintraege].reverse().flatMap((e) => fotosVon(e).map((f) => ({ url: fotoBild(v, f), text: e.text }))).filter((f) => f.url);
   starteRueckblick({ v, t, esc, icon, kat, bildFuerOrt, bildFuerTrip, fotos, sound, abstand, loc, meter });
+}
+
+// ---------- Fotobuch ----------
+// Karte für die Übersichtsseite: eine unsichtbare Karte zeigt das Gebiet der Route, zurück kommen Bild und Lage der Punkte
+async function karteFuersBuch(punkte, verh, hell) {
+  if (punkte.length < 2 || !navigator.onLine && !offlineFuer(ansicht(aktuell))) return null;
+  const w = 1200, h = Math.round(w / verh);
+  const box = document.createElement('div');
+  box.style.cssText = `position:fixed;left:-${w * 3}px;top:0;width:${w}px;height:${h}px;pointer-events:none`;
+  document.body.appendChild(box);
+  let km = null;
+  try {
+    if (!kartenUrl) kartenUrl = await kartenQuelle();
+    km = new maplibregl.Map({ container: box, style: kartenStil(kartenUrl, hell), interactive: false, attributionControl: false, preserveDrawingBuffer: true, fadeDuration: 0, pixelRatio: 1 });
+    const lngs = punkte.map((q) => q.lng), lats = punkte.map((q) => q.lat);
+    km.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: { top: 110, bottom: 110, left: 130, right: 130 }, duration: 0, maxZoom: 15.5 });
+    await new Promise((ok) => km.once('load', ok));
+    const c = km.getCenter();
+    const bangkok = imGebiet(c.lng, c.lat);
+    for (const l of km.getStyle().layers) {
+      if (l.source === 'welt') km.setLayoutProperty(l.id, 'visibility', bangkok ? 'none' : 'visible');
+      else if (l.source === 'protomaps') km.setLayoutProperty(l.id, 'visibility', bangkok ? 'visible' : 'none');
+    }
+    const fertig = await Promise.race([new Promise((ok) => km.once('idle', () => ok(true))), new Promise((ok) => setTimeout(() => ok(false), 12000))]);
+    if (!fertig) return null;
+    const src = km.getCanvas().toDataURL('image/jpeg', 0.9);
+    return { src, hell, pos: punkte.map((q) => { const p = km.project([q.lng, q.lat]); return [p.x / w, p.y / h]; }) };
+  } catch (e) {
+    console.warn('Fotobuch-Karte', e);
+    return null;
+  } finally {
+    if (km) km.remove();
+    box.remove();
+  }
+}
+
+let nachweisListe = null;
+async function commonsNachweise(dateien) {
+  const gemerkt = LS.get('sp.commonsNachweise', {});
+  const fehlt = dateien.filter((d) => !gemerkt[d]);
+  if (!fehlt.length || !navigator.onLine) return gemerkt;
+  try {
+    for (let i = 0; i < fehlt.length; i += 40) {
+      const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&prop=imageinfo&iiprop=extmetadata&iiextmetadatafilter=Artist|LicenseShortName&titles='
+        + fehlt.slice(i, i + 40).map((d) => encodeURIComponent('File:' + d)).join('|');
+      const j = await (await fetch(url)).json();
+      const vorher = Object.fromEntries(((j.query && j.query.normalized) || []).map((n) => [n.to, n.from]));
+      for (const pg of Object.values((j.query && j.query.pages) || {})) {
+        const md = pg.imageinfo && pg.imageinfo[0].extmetadata;
+        if (!md) continue;
+        const urheber = (md.Artist ? md.Artist.value : '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        gemerkt[(vorher[pg.title] || pg.title).replace(/^File:/, '')] = { datei: pg.title, urheber, lizenz: md.LicenseShortName ? md.LicenseShortName.value : '' };
+      }
+    }
+    LS.set('sp.commonsNachweise', gemerkt);
+  } catch {}
+  return gemerkt;
+}
+async function fotobuchStarten() {
+  const v = ansicht(aktuell);
+  if (!v) return;
+  const tripId = aktuell;
+  if (!nachweisListe) { try { nachweisListe = await (await fetch('bilder/nachweise.json')).json(); } catch { nachweisListe = {}; } }
+  // Urheber und Lizenz: eigene Bilder aus nachweise.json, Commons-Fotos kurz nachfragen (höchstens 1,5 s, danach gemerkt)
+  const dateien = [...new Set([...v.orte.filter((o) => o.check && o.bf).map((o) => o.bf), v.meta.bf].filter(Boolean))];
+  const commons = await Promise.race([commonsNachweise(dateien), new Promise((ok) => setTimeout(() => ok(LS.get('sp.commonsNachweise', {})), 1500))]);
+  const quelle = (src, bf) => { const m = /bilder\/(?:orte|klein|hg)\/([^/]+)\.webp$/.exec(src || ''); return (m && nachweisListe[m[1]]) || (bf && commons[bf]) || null; };
+  const nameVon = (id) => (v.leute.find((l) => l.id === id) || {}).n || '';
+  let fehlen = 0;
+  const eintraege = [...v.eintraege].reverse().map((e) => {
+    const o = e.ort && v.orte.find((x) => x.id === e.ort);
+    const fotos = fotosVon(e).map((f) => ({ id: f.id, src: fotoBild(v, f), w: f.w || 4, h: f.h || 3, at: f.at || e.at }));
+    fehlen += fotos.filter((f) => !f.src).length;
+    return { id: e.id, text: e.text, at: e.at, wer: nameVon(e.by), ort: o ? o.n : null, fotos: fotos.filter((f) => f.src) };
+  });
+  // Unterkünfte gehören nicht ins Buch, auch wenn es privat bleibt
+  const stempel = v.orte.filter((o) => o.check && o.k !== 'hotel').sort((a, b) => a.check.at - b.check.at).map((o) => {
+    const bild = bildFuerOrt(o);
+    return { n: o.n, k: kat(o.k).id, farbe: kat(o.k).farbe, at: o.check.at, lat: o.lat, lng: o.lng, wer: nameVon(o.check.by), bild, quelle: quelle(bild, o.bf) };
+  });
+  let meterGesamt = 0;
+  const mitOrt = stempel.filter((s) => s.lat != null);
+  for (let i = 1; i < mitOrt.length; i++) meterGesamt += abstand(mitOrt[i - 1], mitOrt[i]);
+  const titelBild = bildFuerTrip(v.meta);
+  if (fehlen) toast(t('{n} Fotos laden noch – sie kommen ins Buch, sobald sie da sind', { n: fehlen }));
+  sound.tick(); fuehlen('leicht');
+  await fotobuchZeigen({
+    m: { t, loc: loc(), reise: { n: v.meta.n, e: v.meta.e }, von: v.meta.von || null, leute: v.leute.filter((l) => l.n).map((l) => ({ n: l.n })),
+      eintraege, stempel, meter: meterGesamt, orteZahl: v.orte.filter((o) => o.k !== 'hotel').length,
+      titelBild: titelBild ? { src: titelBild, w: 4, h: 3, quelle: quelle(titelBild, v.meta.bf) } : null },
+    einst: (v.tr.data.records.buch && v.tr.data.records.buch.v) || {},
+    speichern: (e) => schreiben(tripId, 'buch', e),
+    fotos: eintraege.flatMap((e) => e.fotos).map((f) => ({ id: f.id, src: f.src })),
+    hdUrl: (id) => hdUrl(tripId, id),
+    karteHolen: (hell, verh) => karteFuersBuch(stempel.filter((s) => s.lat != null), verh, hell),
+    t, esc, icon, sound, toast,
+  });
 }
 
 // ---------- Orts-Seite ----------
@@ -1756,6 +1984,8 @@ $('#ansichten').addEventListener('click', (e) => {
   if (ep) { tagSetzen(ep.dataset.einplanen, ui.planTag); sound.plopp(); fuehlen('leicht'); return; }
   const ol = e.target.closest('[data-ortlink]');
   if (ol) { sound.tick(); return ortOeffnen(ol.dataset.ortlink); }
+  const mf = e.target.closest('[data-foto]');
+  if (mf) { sound.tick(); return fotoBetrachter(mf.dataset.foto, +mf.dataset.i); }
   const ei = e.target.closest('[data-eintrag]');
   if (ei) { sound.tick(); return eintragAnsehen(ei.dataset.eintrag); }
   const kt = e.target.closest('[data-kartentag]');
@@ -1819,6 +2049,7 @@ $('#ansichten').addEventListener('click', (e) => {
     if (was === 'tagaufkarte') { ui.kartenTag = ui.planTag; ui.kartenOrt = null; tabZeigen('karte'); routeZeichnen(); setTimeout(() => allesZeigen(true), 80); return; }
     if (was === 'planheute') { const pt2 = planTagFuer(ansicht(aktuell)); const w = wetter[aktuell]; const d = pt2 && pt2(new Date().toLocaleDateString('en-CA', { timeZone: (w && w.tz) || undefined })); ui.reiseAnsicht = 'plan'; if (d) ui.planTag = d.tag; return allesZeichnen(); }
     if (was === 'rueckblick') return rueckblickStarten();
+    if (was === 'fotobuch') return fotobuchStarten();
     if (was === 'foto') return eintragDialog(a.dataset.id || null, true);
     if (was === 'notiz') return eintragDialog(a.dataset.id || null, false);
     if (was === 'verorten') return ortVerorten(a.dataset.id);
@@ -1902,7 +2133,11 @@ function modalSchliessen() {
   setTimeout(() => { m.hidden = true; m.classList.remove('weg'); $('#modalKarte').innerHTML = ''; }, 260);
   if (modalZu) { const f = modalZu; modalZu = null; f(); }
 }
-$('#modal').addEventListener('click', (e) => { if (e.target.closest('[data-zu]')) modalSchliessen(); });
+$('#modal').addEventListener('click', (e) => {
+  if (e.target.closest('[data-zu]')) return modalSchliessen();
+  const mf = e.target.closest('.eintrag [data-foto]');
+  if (mf) fotoBetrachter(mf.dataset.foto, +mf.dataset.i);
+});
 
 // ---------- Reisen anlegen / beitreten ----------
 async function tripAnlegen(nameText, emoji, vorlage) {
@@ -3614,7 +3849,8 @@ async function start() {
   await karteStarten();
   map.once('load', () => allesZeigen(false));
   allesZeichnen();
-  sync.start();
+  // Zum Testen: ?sync=aus verbindet sich mit keinem Relay (window.sp.sync.start() startet es von Hand)
+  if (!/[?&]sync=aus\b/.test(location.search)) sync.start();
 
   // Einladungslink: #code=XXXX-XXXX-XXXX
   const para = new URLSearchParams(location.search);
