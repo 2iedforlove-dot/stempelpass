@@ -1,5 +1,5 @@
 // App-Hülle offline verfügbar machen. Die große Kartendatei lädt die App selbst in den Cache "sp-karte".
-const VERSION = 'sp-v16'; // bei jeder Änderung hochzählen, sonst bleiben installierte Handys auf altem Stand
+const VERSION = 'sp-v17'; // bei jeder Änderung hochzählen, sonst bleiben installierte Handys auf altem Stand
 const HUELLE = [
   './', 'index.html', 'app.css', 'app.js', 'sync.js', 'vorlagen.js', 'icons.js', 'feedback.js', 'i18n.js', 'onboarding.js', 'planer.js', 'tagebuch.js', 'hinweise.js', 'rueckblick.js', 'route.js', 'ziele.js', 'audioguide.js', 'maskottchen.js', 'partikel.js', 'belohnung.js', 'vorlieben.js', 'plaene.js', 'weltkarte.js', 'manifest.webmanifest', 'bilder/nachweise.json',
   'vendor/maplibre-gl.js', 'vendor/maplibre-gl.css', 'vendor/pmtiles.js', 'vendor/basemaps.js', 'vendor/nostr.bundle.js', 'vendor/qrcode.js',

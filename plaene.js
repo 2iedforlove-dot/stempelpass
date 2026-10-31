@@ -160,10 +160,13 @@ function planLesen(e) {
     lat: zahl(z.lat, -90, 90) ?? orte[0].lat, lng: zahl(z.lng, -180, 180) ?? orte[0].lng, radius: zahl(z.radius, 1, 600) || 15,
   };
   const d = tag(e, 'd');
+  // Wanderstempel-Runden: Abstand für Vor-Ort-Stempel, Wandernadel-Stufen, anonyme Statistik für den Ersteller
+  const nadel = Array.isArray(c.nadel) && c.nadel.length === 3 && c.nadel.every((x, i) => Number.isInteger(x) && x >= 1 && x <= orte.length && (!i || x >= c.nadel[i - 1])) ? c.nadel : null;
   return {
     addr: `${KIND}:${e.pubkey}:${d}`, pk: e.pubkey, d, at: e.created_at,
     n: text(c.n, 60) || ziel.n || '?', e: text(c.e, 8), autor: text(c.autor, 30), text: text(c.text, 400),
     ziel, tage: ganz(c.tage, 1, 60), bf: text(c.bf, 200) || null, orte,
+    vorOrt: ganz(c.vorOrt, 30, 2000), nadel, statistik: c.statistik === true,
   };
 }
 
@@ -245,6 +248,40 @@ export async function planZurueckziehen(addr) {
 export async function bewerten(addr, { sterne, text: t = '', name = '', erledigt, gesamt }) {
   const e = signieren({ tags: [['d', 'stempelpass-bewertung:' + addr], ['t', T_BEWERTUNG], ['a', addr]], content: JSON.stringify({ v: 1, sterne, text: t.slice(0, 280), name: name.slice(0, 30), erledigt, gesamt }) });
   return senden(e);
+}
+
+// ---------- Anonyme Statistik für Wanderstempel-Runden ----------
+// Jeder Vor-Ort-Stempel einer Runde mit Statistik geht als kleines Ereignis an den Ersteller der Runde:
+// verschlüsselt (NIP-44), nur für ihn lesbar, signiert mit einem Einmal-Schlüssel – so lassen sich die
+// Ereignisse eines Handys öffentlich nicht miteinander verknüpfen. Inhalt: Station, Tag, anonyme Kennungen
+// für Wanderer und Gruppe, erreichte Wandernadel. Kein Name, kein Standort.
+const T_STAT = 'stempelpass-stat';
+
+export function statistikSenden(addr, daten) {
+  const { pk } = zerlegen(addr);
+  const einmal = NT.generateSecretKey();
+  const inhalt = NT.nip44.encrypt(JSON.stringify({ v: 1, ...daten }), NT.nip44.getConversationKey(einmal, pk));
+  const e = NT.finalizeEvent({
+    kind: KIND, created_at: Math.floor(Date.now() / 1000),
+    tags: [['d', 'stempelpass-stat:' + hex(NT.generateSecretKey()).slice(0, 16)], ['t', T_STAT], ['p', pk], ['a', addr]], content: inhalt,
+  }, einmal);
+  return senden(e);
+}
+
+// Nur der Ersteller kann das lesen (mit seinem Schlüssel auf diesem Handy)
+export async function statistikLaden(addr) {
+  const events = await abfragen({ kinds: [KIND], '#p': [meinPk()], '#a': [addr], limit: 5000 }, 8000);
+  const sk = schluessel();
+  const kennung = (x) => (typeof x === 'string' && /^[0-9a-f]{12}$/.test(x) ? x : null);
+  return events.filter((e) => tag(e, 't') === T_STAT).map((e) => {
+    let c;
+    try { c = JSON.parse(NT.nip44.decrypt(e.content, NT.nip44.getConversationKey(sk, e.pubkey))); } catch { return null; }
+    if (!c || c.v !== 1 || !kennung(c.teilnehmer) || !/^\d{4}-\d{2}-\d{2}$/.test(c.tag || '')) return null;
+    return {
+      station: ganz(c.station, 0, 200), name: text(c.name, 60), tag: c.tag, teilnehmer: c.teilnehmer, gruppe: kennung(c.gruppe) || c.teilnehmer,
+      nadel: ['bronze', 'silber', 'gold'].includes(c.nadel) ? c.nadel : null, anzahl: ganz(c.anzahl, 0, 200),
+    };
+  }).filter(Boolean);
 }
 
 export function kopieMelden(addr) {

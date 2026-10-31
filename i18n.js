@@ -283,4 +283,15 @@ export const EN = {
   'ab {n}': 'from {n}', 'Gestempelt wird nur vor Ort.': 'Stamps only count on site.', 'Wanderstempel': 'Hiking stamps',
   'Gestempelt wird nur vor Ort – das Handy prüft per GPS, ob du wirklich da bist.': 'Stamps only count on site – your phone checks by GPS that you are really there.',
   'Bronze': 'Bronze', 'Silber': 'Silver', 'Gold': 'Gold',
+  // Statistik für Partner
+  'Ihr zählt nicht mit.': 'You are not being counted.', 'Zählt anonym für {autor} mit: nur Station und Tag, verschlüsselt, ohne Namen und Standort.': 'Counts anonymously for {autor}: only station and day, encrypted, without names or location.',
+  'Wieder mitzählen': 'Count again', 'Nicht mitzählen': 'Don’t count', 'Eure Stempel werden nicht mehr mitgezählt': 'Your stamps are no longer counted', 'Eure Stempel zählen wieder anonym mit': 'Your stamps count anonymously again',
+  'Zählt anonym mit: Station und Tag gehen verschlüsselt an {autor}, ohne Namen und ohne Standort. Abschaltbar.': 'Counts anonymously: station and day go encrypted to {autor}, without names or location. Can be turned off.',
+  'Statistik ansehen': 'View statistics', 'Statistik': 'Statistics', 'Stempi zählt die Stempel …': 'Stempi is counting the stamps …', 'Die Statistik braucht kurz Internet.': 'The statistics need a moment of internet.',
+  'Noch niemand unterwegs': 'Nobody out there yet', 'Sobald jemand deine Runde übernimmt und vor Ort stempelt, siehst du es hier. Gezählt wird anonym.': 'As soon as someone uses your route and stamps on site, you will see it here. Counting is anonymous.',
+  'Wanderer': 'Hikers', 'Gruppen': 'Groups', 'Stempel': 'Stamps', 'Gruppen, die die jeweilige Wandernadel erreicht haben.': 'Groups that reached each hiking badge.',
+  'Stationen': 'Stations', 'Stempel pro Woche': 'Stamps per week', 'Zeitraum: {von} bis {bis}. Jeder Wanderer zählt pro Station einmal.': 'Period: {von} to {bis}. Each hiker counts once per station.',
+  'Als Tabelle (CSV)': 'As a table (CSV)', 'Nur auf diesem Handy lesbar: die Daten sind mit deinem Schlüssel verschlüsselt.': 'Readable only on this phone: the data is encrypted with your key.',
+  'Als Wanderstempel-Runde': 'As a hiking stamp route', 'Stempeln nur vor Ort, mit Wandernadel': 'Stamp only on site, with hiking badges', 'ab': 'from',
+  'Anonym mitzählen': 'Count anonymously', 'Du siehst, wie viele Wanderer an welcher Station waren und welche Nadeln sie erreicht haben.': 'You see how many hikers visited each station and which badges they reached.',
 };

@@ -6,7 +6,7 @@ import { stempi, stimmung, stempiLeben } from './maskottchen.js';
 import { konfetti as partikelKonfetti, spritzer, glitzer } from './partikel.js';
 import { stufe, stufenName, seltenheit, bestenliste } from './belohnung.js';
 import { vorliebenHtml, vorliebenKlick, nachInteressen, passtZu, interessenText, orteProTag } from './vorlieben.js';
-import { planeSuchen, planHolen, statistik, planVeroeffentlichen, planZurueckziehen, bewerten, kopieMelden, meinPk } from './plaene.js';
+import { planeSuchen, planHolen, statistik, planVeroeffentlichen, planZurueckziehen, bewerten, kopieMelden, meinPk, statistikSenden, statistikLaden } from './plaene.js';
 import { weltProtokoll, weltSchichten, regionKacheln, regionLaden, regionLoeschen, schaetzeBytes, ATTRIBUTION as WELT_ATTRIBUTION } from './weltkarte.js';
 import { routeHolen, schaetzung, schrittIcon, schrittText, googleRoute } from './route.js';
 import { autoPlan, routeUrl, tageAnzahl, datumVonTag } from './planer.js';
@@ -677,6 +677,7 @@ function seitenHtml(e) {
   if (e.s === 'profil') return profilHtml();
   if (e.s === 'entdecken') return entdeckenHtml();
   if (e.s === 'plan') return planSeiteHtml(e.addr);
+  if (e.s === 'statistik') return statistikSeiteHtml(e.addr);
   return '';
 }
 
@@ -1545,6 +1546,7 @@ function stempeln(id, knopf) {
   }
   const vorher = v.erledigt;
   schreiben(aktuell, 'c:' + id, { ok: true, by: ich.id, at: Date.now(), ...(vorOrt.beweis || {}) });
+  if (vorOrt.beweis) statistikMelden(v, o, vorher + 1);
   sound.stempel(); fuehlen('stempel');
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll(`[data-stempel="${CSS.escape(id)}"]`).forEach((el) => {
@@ -1600,6 +1602,39 @@ function stempelErfolg(id, vorher) {
   });
 }
 
+// ---------- Anonyme Statistik für den Ersteller einer Wanderstempel-Runde ----------
+// Nur Vor-Ort-Stempel zählen. Ohne Internet landet das Ereignis in einer Warteschlange und geht später raus.
+const kennung = async (text) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].slice(0, 6).map((b) => b.toString(16).padStart(2, '0')).join('');
+const statistikAus = () => LS.get('sp.statistikAus', {});
+async function statistikMelden(v, o, anzahl) {
+  const vl = v.meta && v.meta.vorlage;
+  if (!vl || !vl.statistik || statistikAus()[vl.addr]) return;
+  const nadel = v.meta.nadel ? NADELN.filter((_, i) => anzahl === v.meta.nadel[i]).pop() || null : null;
+  const daten = {
+    station: Number.isInteger(o.pl) ? o.pl : null, name: String(o.orig || o.n).slice(0, 60),
+    tag: new Date().toLocaleDateString('en-CA'), teilnehmer: await kennung(ich.id + '|' + vl.addr), gruppe: await kennung(v.id + '|' + vl.addr), nadel, anzahl,
+  };
+  const schlange = LS.get('sp.statSchlange', []);
+  schlange.push({ addr: vl.addr, daten });
+  LS.set('sp.statSchlange', schlange.slice(-500));
+  statistikAbschicken();
+}
+let statSendet = false;
+async function statistikAbschicken() {
+  if (statSendet || !navigator.onLine) return;
+  statSendet = true;
+  try {
+    for (;;) {
+      const schlange = LS.get('sp.statSchlange', []);
+      if (!schlange.length) break;
+      const n = await statistikSenden(schlange[0].addr, schlange[0].daten).catch(() => 0);
+      if (!n) break; // später nochmal
+      LS.set('sp.statSchlange', LS.get('sp.statSchlange', []).slice(1));
+    }
+  } finally { statSendet = false; }
+}
+addEventListener('online', () => setTimeout(statistikAbschicken, 2000));
+
 const NADELN = ['bronze', 'silber', 'gold'];
 const NADEL_NAME = { bronze: 'Bronze', silber: 'Silber', gold: 'Gold' };
 function nadelWeiter(ab, e) {
@@ -1614,6 +1649,10 @@ function nadelHtml(v) {
   return `<div class="nadel-karte glas">
     <div class="nadeln">${NADELN.map((k, i) => `<span class="nadel ${k} ${e >= v.meta.nadel[i] ? 'an' : ''}"><i>${icon('stern', 18, 2)}</i><b>${esc(t(NADEL_NAME[k]))}</b><small>${esc(t('ab {n}', { n: v.meta.nadel[i] }))}</small></span>`).join('')}</div>
     <p class="klein">${esc(nadelWeiter(v.meta.nadel, e))}${v.meta.vorOrt ? ' ' + esc(t('Gestempelt wird nur vor Ort.')) : ''}</p>
+    ${v.meta.vorlage && v.meta.vorlage.statistik ? `<p class="klein stat-hinweis">${icon('schloss', 14)}<span>${esc(statistikAus()[v.meta.vorlage.addr]
+      ? t('Ihr zählt nicht mit.')
+      : t('Zählt anonym für {autor} mit: nur Station und Tag, verschlüsselt, ohne Namen und Standort.', { autor: v.meta.vorlage.autor || t('Unbekannt') }))}
+      <button class="textknopf" data-aktion="statistikaus" data-addr="${esc(v.meta.vorlage.addr)}">${esc(statistikAus()[v.meta.vorlage.addr] ? t('Wieder mitzählen') : t('Nicht mitzählen'))}</button></span></p>` : ''}
   </div>`;
 }
 
@@ -1812,6 +1851,16 @@ $('#ansichten').addEventListener('click', (e) => {
     if (was === 'planuebernehmen') { const p = planFinden(a.dataset.addr); return p && uebernehmenDialog(p); }
     if (was === 'planzurueckziehen') return planZurueckziehenFragen(a.dataset.addr);
     if (was === 'veroeffentlichen') return veroeffentlichenDialog();
+    if (was === 'planstatistik') return statistikOeffnen(a.dataset.addr);
+    if (was === 'statneu') { statDaten.delete(a.dataset.addr); zurueck(ui.tab, true); return statistikOeffnen(a.dataset.addr); }
+    if (was === 'statcsv') return statistikCsv(a.dataset.addr);
+    if (was === 'statistikaus') {
+      const aus = statistikAus();
+      if (aus[a.dataset.addr]) delete aus[a.dataset.addr]; else aus[a.dataset.addr] = true;
+      LS.set('sp.statistikAus', aus); fuehlen('leicht');
+      toast(aus[a.dataset.addr] ? t('Eure Stempel werden nicht mehr mitgezählt') : t('Eure Stempel zählen wieder anonym mit'));
+      return allesZeichnen();
+    }
     if (was === 'meinplan') { tabZeigen('entdecken'); while (ui.stapel.entdecken.length > 1) zurueck('entdecken', true); return planOeffnen(a.dataset.addr); }
     if (was === 'vorlieben') return vorliebenDialog();
     if (was === 'stimme') return stimmeDialog();
@@ -2417,12 +2466,112 @@ function planSeiteHtml(addr) {
         ${p.text ? `<p class="pl-text">${esc(p.text)}</p>` : ''}
         ${p.nadel ? `<div class="nadeln klein-nadeln">${NADELN.map((k, i) => `<span class="nadel ${k} an"><i>${icon('stern', 16, 2)}</i><b>${esc(t(NADEL_NAME[k]))}</b><small>${esc(t('ab {n}', { n: p.nadel[i] }))}</small></span>`).join('')}</div>` : ''}
         ${p.vorOrt ? `<p class="klein" style="display:flex;gap:6px;align-items:center;margin-top:10px">${icon('ortung', 15)}<span>${esc(t('Gestempelt wird nur vor Ort – das Handy prüft per GPS, ob du wirklich da bist.'))}</span></p>` : ''}
+        ${p.statistik && !eigen ? `<p class="klein" style="display:flex;gap:6px;align-items:center;margin-top:6px">${icon('schloss', 15)}<span>${esc(t('Zählt anonym mit: Station und Tag gehen verschlüsselt an {autor}, ohne Namen und ohne Standort. Abschaltbar.', { autor: p.autor || t('Unbekannt') }))}</span></p>` : ''}
       </div>
+      ${eigen && p.statistik ? `<button class="knopf glas voll" data-aktion="planstatistik" data-addr="${esc(addr)}" style="margin-bottom:8px">${icon('liste', 19)} ${esc(t('Statistik ansehen'))}</button>` : ''}
       <button class="knopf akzent voll" data-aktion="planuebernehmen" data-addr="${esc(addr)}">${icon('plus', 20)} ${esc(t('Plan übernehmen'))}</button>
       ${eigen ? `<button class="knopf voll" data-aktion="planzurueckziehen" data-addr="${esc(addr)}" style="margin-top:8px;background:none;border:0;box-shadow:none;color:var(--rot)">${esc(t('Plan zurückziehen'))}</button>` : ''}
       ${tageHtml}
       ${bewertungen}
     </div>`;
+}
+
+// ---------- Statistik für den Ersteller einer Wanderstempel-Runde ----------
+const statDaten = new Map(); // addr -> { laedt, liste, fehler, at }
+
+async function statistikOeffnen(addr) {
+  oeffnen({ s: 'statistik', addr }, ui.tab);
+  statDaten.set(addr, { ...(statDaten.get(addr) || {}), laedt: true, fehler: false });
+  neuZeichnen();
+  try {
+    const liste = await statistikLaden(addr);
+    statDaten.set(addr, { laedt: false, liste, at: Date.now() });
+  } catch (e) {
+    console.warn('Statistik', e);
+    statDaten.set(addr, { ...(statDaten.get(addr) || {}), laedt: false, fehler: true });
+  }
+  neuZeichnen();
+}
+
+// Ein Stempel zählt pro Wanderer und Station nur einmal (auch wenn er entfernt und neu gesetzt wurde)
+function statistikAuswerten(p, liste) {
+  const stationVon = (x) => (x.station != null && x.station < p.orte.length ? x.station : p.orte.findIndex((o) => o.n === x.name));
+  const einmal = new Map();
+  for (const x of liste) { const k = x.teilnehmer + '|' + stationVon(x); const alt = einmal.get(k); if (!alt || x.tag < alt.tag) einmal.set(k, x); }
+  const stempel = [...einmal.values()];
+  const teilnehmer = new Set(stempel.map((x) => x.teilnehmer));
+  const gruppen = new Set(stempel.map((x) => x.gruppe));
+  const proStation = p.orte.map((o, i) => ({ o, n: new Set(stempel.filter((x) => stationVon(x) === i).map((x) => x.teilnehmer)).size }));
+  const besteNadel = new Map();
+  for (const x of liste) if (x.nadel) besteNadel.set(x.gruppe, Math.max(besteNadel.get(x.gruppe) ?? -1, NADELN.indexOf(x.nadel)));
+  const nadeln = NADELN.map((_, i) => [...besteNadel.values()].filter((b) => b >= i).length);
+  // Wochen (Montag als Start), die letzten 12 mit Aktivität
+  const woche = (tag) => { const d = new Date(tag + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toLocaleDateString('en-CA'); };
+  const proWoche = new Map();
+  stempel.forEach((x) => proWoche.set(woche(x.tag), (proWoche.get(woche(x.tag)) || 0) + 1));
+  const wochen = [...proWoche.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
+  const tage = stempel.map((x) => x.tag).sort();
+  return { stempel, teilnehmer: teilnehmer.size, gruppen: gruppen.size, proStation, nadeln, wochen, von: tage[0], bis: tage[tage.length - 1] };
+}
+
+function statistikSeiteHtml(addr) {
+  const p = planFinden(addr);
+  const z = statDaten.get(addr) || {};
+  const kopf = `${seiteHg(null)}<div class="nav-zeile"><button class="kreisknopf glas" data-aktion="zurueck" aria-label="${esc(t('Zurück'))}">${icon('zurueck', 22, 2.3)}</button></div>
+    <div class="grosstitel"><div><div class="unter">${esc(p ? p.n : '')}</div><h1>${esc(t('Statistik'))}</h1></div></div>`;
+  if (!p) return kopf;
+  if (z.laedt && !z.liste) return kopf + `<div class="leer-hinweis">${stempi({ stimmung: 'staunen', groesse: 70 })}<br>${esc(t('Stempi zählt die Stempel …'))}</div>`;
+  if (!z.liste) return kopf + `<div class="leer-reisen glas">${stempi({ stimmung: 'schlaeft', groesse: 80 })}<h2>${esc(t('Gerade keine Verbindung'))}</h2><p>${esc(t('Die Statistik braucht kurz Internet.'))}</p><button class="knopf voll" data-aktion="statneu" data-addr="${esc(addr)}">${esc(t('Nochmal versuchen'))}</button></div>`;
+  const a = statistikAuswerten(p, z.liste);
+  const datum = (d) => new Date(d + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', year: 'numeric' });
+  if (!a.stempel.length) {
+    return kopf + `<div class="leer-reisen glas">${stempi({ stimmung: 'winken', groesse: 90 })}<h2>${esc(t('Noch niemand unterwegs'))}</h2>
+      <p>${esc(t('Sobald jemand deine Runde übernimmt und vor Ort stempelt, siehst du es hier. Gezählt wird anonym.'))}</p>
+      <button class="knopf voll" data-aktion="statneu" data-addr="${esc(addr)}">${icon('sync', 18)} ${esc(t('Aktualisieren'))}</button></div>`;
+  }
+  const maxStation = Math.max(1, ...a.proStation.map((s) => s.n));
+  const maxWoche = Math.max(1, ...a.wochen.map((w) => w[1]));
+  return kopf + `
+    <div class="stat-zahlen">
+      <div class="stat glas"><b>${a.teilnehmer}</b><span>${esc(t('Wanderer'))}</span></div>
+      <div class="stat glas"><b>${a.gruppen}</b><span>${esc(t('Gruppen'))}</span></div>
+      <div class="stat glas"><b>${a.stempel.length}</b><span>${esc(t('Stempel'))}</span></div>
+    </div>
+    <div class="nadel-karte glas"><div class="nadeln">${NADELN.map((k, i) => `<span class="nadel ${k} ${a.nadeln[i] ? 'an' : ''}"><i>${icon('stern', 18, 2)}</i><b>${a.nadeln[i]}× ${esc(t(NADEL_NAME[k]))}</b><small>${esc(t('ab {n}', { n: p.nadel ? p.nadel[i] : '?' }))}</small></span>`).join('')}</div>
+      <p class="klein">${esc(t('Gruppen, die die jeweilige Wandernadel erreicht haben.'))}</p></div>
+    <div class="abschnitt">${esc(t('Stationen'))}</div>
+    <div class="gruppe glas stat-stationen">${a.proStation.map((s) => `<div class="bl-zeile">${bildFuerOrt(s.o, 'klein') ? `<img class="av" src="${esc(bildFuerOrt(s.o, 'klein'))}" alt="" loading="lazy">` : katKachel(s.o.k, 16, 'av')}
+      <span style="min-width:0"><span class="nm">${esc(ortName(s.o))}</span><span class="spur" style="--w:${(s.n / maxStation).toFixed(3)};--f:var(--akzent)"><i></i></span></span><b>${s.n}</b></div>`).join('')}</div>
+    <div class="abschnitt">${esc(t('Stempel pro Woche'))}</div>
+    <div class="wochen glas">${a.wochen.map(([w, n]) => `<div class="woche"><b>${n}</b><i style="--h:${(n / maxWoche).toFixed(3)}"></i><small>${esc(new Date(w + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'numeric' }))}</small></div>`).join('')}</div>
+    <p class="klein" style="margin:10px 0 14px">${esc(t('Zeitraum: {von} bis {bis}. Jeder Wanderer zählt pro Station einmal.', { von: datum(a.von), bis: datum(a.bis) }))}</p>
+    <div class="knopf-paar">
+      <button class="knopf glas" data-aktion="statcsv" data-addr="${esc(addr)}">${icon('liste', 18)} ${esc(t('Als Tabelle (CSV)'))}</button>
+      <button class="knopf glas" data-aktion="statneu" data-addr="${esc(addr)}">${icon('sync', 18)} ${esc(t('Aktualisieren'))}</button>
+    </div>
+    <p class="klein" style="text-align:center;margin-top:14px">${esc(t('Nur auf diesem Handy lesbar: die Daten sind mit deinem Schlüssel verschlüsselt.'))}</p>`;
+}
+
+// CSV für Berichte an die Gemeinde (Semikolon, damit Excel es auf Deutsch sofort richtig öffnet)
+function statistikCsv(addr) {
+  const p = planFinden(addr);
+  const z = statDaten.get(addr);
+  if (!p || !z || !z.liste) return;
+  const a = statistikAuswerten(p, z.liste);
+  const feld = (x) => `"${String(x ?? '').replace(/"/g, '""')}"`;
+  const zeilen = [['Datum', 'Station', 'Wanderer', 'Gruppe', 'Wandernadel'].map(feld).join(';')];
+  a.stempel.sort((x, y) => x.tag.localeCompare(y.tag)).forEach((x) => {
+    const o = x.station != null && p.orte[x.station] ? p.orte[x.station].n : x.name;
+    const nadel = z.liste.find((y) => y.gruppe === x.gruppe && y.nadel && y.tag === x.tag && y.station === x.station);
+    zeilen.push([x.tag, o, x.teilnehmer, x.gruppe, nadel ? t(NADEL_NAME[nadel.nadel]) : ''].map(feld).join(';'));
+  });
+  const blob = new Blob(['﻿' + zeilen.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `stempelpass-${p.n.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-')}-${new Date().toLocaleDateString('en-CA')}.csv`;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+  sound.plopp();
 }
 
 async function planOeffnen(addr) {
@@ -2486,12 +2635,12 @@ async function planUebernehmen(p, von, bis) {
   const meta = { ...v.meta, ort: { lat: p.ziel.lat, lng: p.ziel.lng }, radius: p.ziel.radius, cc: p.ziel.cc, land: p.ziel.land, bf: p.bf || null, von, bis: von ? (bis || von) : null };
   if (p.b) meta.b = p.b;
   if (!von && p.tage) meta.tage = p.tage;
-  if (!p.lokal) meta.vorlage = { addr: p.addr, autor: p.autor, n: p.n };
+  if (!p.lokal) meta.vorlage = { addr: p.addr, autor: p.autor, n: p.n, statistik: !!p.statistik };
   if (p.vorOrt) meta.vorOrt = p.vorOrt;
   if (p.nadel) meta.nadel = p.nadel;
   schreiben(id, 'meta', meta);
   p.orte.forEach((o, i) => {
-    const neu = { n: o.n, k: o.k, lat: o.lat, lng: o.lng, o: i };
+    const neu = { n: o.n, k: o.k, lat: o.lat, lng: o.lng, o: i, pl: i }; // pl: Nummer der Station im Plan (für die Statistik)
     if (o.nl) neu.nl = o.nl;
     if (o.wd) neu.wd = o.wd;
     if (o.bf) neu.bf = o.bf;
@@ -2528,10 +2677,16 @@ function veroeffentlichenDialog() {
       ${bildFuerOrt(o, 'klein') ? `<img src="${bildFuerOrt(o, 'klein')}" alt="" loading="lazy">` : katKachel(o.k, 22, 'sw-ico')}
       <span style="min-width:0"><b>${esc(o.n)}</b><small>${esc(kat(o.k).name)}${o.tag ? ' · ' + esc(t('Tag {n}', { n: o.tag })) : ''}</small></span>
       <span class="sw-mark">${icon('haken', 15, 3)}</span></label>`).join('')}</div>
+    <label class="e-zeile wander-schalter"><span class="e-ico" style="background:#2f6b4f">${icon('stern', 18)}</span><span style="flex:1">${esc(t('Als Wanderstempel-Runde'))}<small>${esc(t('Stempeln nur vor Ort, mit Wandernadel'))}</small></span><input type="checkbox" class="schalter" id="vWander" ${v.meta.nadel || v.meta.vorOrt ? 'checked' : ''}></label>
+    <div id="vWanderOpt" ${v.meta.nadel || v.meta.vorOrt ? '' : 'hidden'}>
+      <div class="nadel-eingaben">${NADELN.map((k, i) => { const vor = v.meta.nadel ? v.meta.nadel[i] : Math.max(1, Math.round((kandidaten.length * (i + 1)) / 3)); return `<label class="feld"><span>${esc(t(NADEL_NAME[k]))} ${esc(t('ab'))}</span><input class="eingabe" type="number" inputmode="numeric" min="1" max="${kandidaten.length}" id="vNadel${i}" value="${vor}"></label>`; }).join('')}</div>
+      <label class="e-zeile"><span style="flex:1">${esc(t('Anonym mitzählen'))}<small>${esc(t('Du siehst, wie viele Wanderer an welcher Station waren und welche Nadeln sie erreicht haben.'))}</small></span><input type="checkbox" class="schalter" id="vStat" checked></label>
+    </div>
     <div class="ios-hinweis" style="display:flex;gap:8px;align-items:flex-start">${icon('schloss', 16)}<span>${esc(t('Nie geteilt: Unterkünfte, Notizen, Fotos, Tagebuch, Mitreisende und eure Stempel. Der Plan ist öffentlich – du kannst ihn jederzeit zurückziehen.'))}</span></div>
     <div class="knopf-reihe" style="position:sticky;bottom:0"><button class="knopf voll akzent" id="vOk">${icon('globus', 19)} ${esc(schon ? t('Aktualisieren') : t('Veröffentlichen'))}</button></div>`);
   const ok = k.querySelector('#vOk');
   k.querySelector('#vOrte').addEventListener('change', () => { sound.tick(); fuehlen('leicht'); });
+  k.querySelector('#vWander').addEventListener('change', (e) => { k.querySelector('#vWanderOpt').hidden = !e.target.checked; sound.tick(); });
   ok.onclick = async () => {
     const gewaehlt = [...k.querySelectorAll('[data-vo]:checked')].map((c) => kandidaten[+c.dataset.vo]);
     if (gewaehlt.length < 2) return toast(t('Wähl mindestens 2 Orte'));
@@ -2547,6 +2702,13 @@ function veroeffentlichenDialog() {
       tage: tageAnzahl(v.meta) || Math.max(0, ...gewaehlt.map((o) => o.tag || 0)) || null, bf: v.meta.bf || null,
       orte: gewaehlt.map((o) => ({ n: o.orig, nl: o.nl || undefined, k: o.k, lat: r5(o.lat), lng: r5(o.lng), wd: o.wd || undefined, bf: o.bf || undefined, tag: o.tag || undefined, reihe: o.reihe ?? undefined })),
     };
+    if (k.querySelector('#vWander').checked) {
+      // Stufen passend zur Zahl der geteilten Stationen und aufsteigend
+      const g = Math.min(gewaehlt.length, Math.max(1, Math.round(+k.querySelector('#vNadel2').value) || gewaehlt.length));
+      const s = Math.min(g, Math.max(1, Math.round(+k.querySelector('#vNadel1').value) || g));
+      const b = Math.min(s, Math.max(1, Math.round(+k.querySelector('#vNadel0').value) || s));
+      Object.assign(plan, { vorOrt: v.meta.vorOrt || 150, nadel: [b, s, g], statistik: k.querySelector('#vStat').checked });
+    }
     ok.disabled = true; ok.textContent = t('Wird veröffentlicht …');
     let erg;
     try { erg = await planVeroeffentlichen(plan); } catch (e) { console.warn(e); erg = { relays: 0 }; }
@@ -3448,6 +3610,7 @@ async function start() {
   // Sterne und Übernahmen der eigenen veröffentlichten Pläne für die Anzeige in der Reise
   const eigene = Object.values(meineVeroeffentlicht).map((m) => m.addr);
   if (eigene.length) setTimeout(() => statistik(eigene).then((s) => { Object.assign(planStats, s); neuZeichnen(); }).catch(() => {}), 2500);
+  setTimeout(statistikAbschicken, 4000); // offline gesammelte Zähl-Ereignisse nachschicken
   await karteStarten();
   map.once('load', () => allesZeigen(false));
   allesZeichnen();

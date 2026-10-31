@@ -965,6 +965,22 @@ pre.codes { font: 600 14px/1.6 ui-monospace, Menlo, Consolas, monospace; backgro
 .ort.nein, .k-karte.nein { animation: nein .45s ease-in-out; }
 @keyframes nein { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
 
+/* Statistik für Partner */
+.stat-zahlen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.stat-stationen { padding: 8px 14px; }
+.stat-stationen .av { object-fit: cover; border-radius: 9px; }
+.wochen { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding: 14px 14px 10px; border-radius: 22px; overflow-x: auto; }
+.woche { flex: 1 0 26px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
+.woche b { font-size: 12px; font-variant-numeric: tabular-nums; }
+.woche i { width: 100%; max-width: 28px; height: calc(var(--h) * 82px + 3px); border-radius: 6px 6px 3px 3px; background: var(--akzent-verlauf); }
+.woche small { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.stat-hinweis { display: flex; gap: 7px; align-items: flex-start; }
+.stat-hinweis .ic { flex: none; margin-top: 3px; }
+.textknopf { display: inline; padding: 0; margin-left: 4px; color: var(--akzent); font: inherit; font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
+.wander-schalter { border-radius: 18px; background: var(--flaeche); margin: 4px 0 8px; }
+.wander-schalter small, #vWanderOpt .e-zeile small { display: block; font-size: 12.5px; color: var(--text-3); }
+.nadel-eingaben { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
 .loeschen-klein { width: 30px; height: 30px; margin: -6px -6px -6px 6px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--rot); vertical-align: middle; }
 .info-zeile small { color: var(--text-3); font-size: 12px; }
 
