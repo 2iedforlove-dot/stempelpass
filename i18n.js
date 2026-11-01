@@ -310,6 +310,10 @@ export const EN = {
   'Stil': 'Style', 'Titelbild': 'Cover photo', 'Fotos im Buch': 'Photos in the book', 'Antippen blendet ein Foto aus': 'Tap to hide a photo',
   'Papier': 'Paper', 'Sand': 'Sand', 'Nacht': 'Night',
   'Impressum & Datenschutz': 'Legal notice & privacy',
+  // Eingebaute Muster-Runde
+  'Mödlinger Stempelrunde': 'Mödling Stamp Trail',
+  'Zwölf Stationen zwischen Altstadt, Burgruine, Husarentempel und Anninger. Gestempelt wird nur vor Ort. Ab 4 Stempeln gibt es die Wandernadel in Bronze, ab 8 in Silber und mit allen 12 in Gold.':
+    'Twelve stations between the old town, the castle ruins, the Hussar Temple and the Anninger. You can only stamp on site. 4 stamps earn the bronze hiking badge, 8 the silver and all 12 the gold.',
   // Vorführ-Reise (?demo)
   'Wochenende in Mödling': 'Weekend in Mödling', 'Mama': 'Mom', 'Papa': 'Dad',
   'Los geht’s beim Rathaus – zwölf Stempel bis Gold!': 'Starting at the town hall – twelve stamps to gold!',

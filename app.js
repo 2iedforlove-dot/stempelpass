@@ -55,8 +55,10 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 
+// Wer neu ist, bekommt die Sprache seines Handys: Deutsch bei deutschem Gerät, sonst Englisch
+const geraeteSprache = /^de\b/i.test(navigator.language || '') ? 'de' : 'en';
 const ich = Object.assign(
-  { id: zufall(8), name: '', farbe: FARBEN[Math.floor(Math.random() * FARBEN.length)], design: 'auto', akzent: 'orange', sprache: 'de', heimat: null, vibration: true, eingerichtet: false,
+  { id: zufall(8), name: '', farbe: FARBEN[Math.floor(Math.random() * FARBEN.length)], design: 'auto', akzent: 'orange', sprache: geraeteSprache, heimat: null, vibration: true, eingerichtet: false,
     interessen: [], tempo: 'ausgewogen', stimmen: {}, schritte: {} },
   LS.get('sp.ich', {}),
 );
@@ -2604,8 +2606,9 @@ const KLASSIKER = [{
   orte: BANGKOK.orte.filter((o) => o[1] !== 'hotel').map(([n, k, lat, lng]) => ({ n, k, lat, lng })),
 }, {
   // Muster für das Pilotprojekt: ein digitaler Wanderstempel. Stationen und Fotos aus Wikidata/Wikimedia Commons.
-  addr: 'lokal:moedling', lokal: true, n: 'Mödlinger Stempelrunde', e: '🥾', autor: 'Stamptrail', vorOrt: 150, nadel: [4, 8, 12],
-  text: 'Zwölf Stationen zwischen Altstadt, Burgruine, Husarentempel und Anninger. Gestempelt wird nur vor Ort. Ab 4 Stempeln gibt es die Wandernadel in Bronze, ab 8 in Silber und mit allen 12 in Gold.',
+  // Titel und Text als Getter, damit sie in der gerade gewählten Sprache erscheinen
+  addr: 'lokal:moedling', lokal: true, get n() { return t('Mödlinger Stempelrunde'); }, e: '🥾', autor: 'Stamptrail', vorOrt: 150, nadel: [4, 8, 12],
+  get text() { return t('Zwölf Stationen zwischen Altstadt, Burgruine, Husarentempel und Anninger. Gestempelt wird nur vor Ort. Ab 4 Stempeln gibt es die Wandernadel in Bronze, ab 8 in Silber und mit allen 12 in Gold.'); },
   ziel: { n: 'Mödling', land: 'Österreich', cc: 'at', lat: 48.0835, lng: 16.2755, radius: 5 }, tage: null,
   orte: [
     ['Altes Rathaus Mödling', 'kultur', 48.0855, 16.283, 'Q439511', 'Mödling - altes Rathaus (2).JPG'],
@@ -2843,7 +2846,7 @@ function statistikCsv(addr) {
   const blob = new Blob(['﻿' + zeilen.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `stempelpass-${p.n.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-')}-${new Date().toLocaleDateString('en-CA')}.csv`;
+  link.download = `stamptrail-${p.n.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-')}-${new Date().toLocaleDateString('en-CA')}.csv`;
   document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 4000);
   sound.plopp();
