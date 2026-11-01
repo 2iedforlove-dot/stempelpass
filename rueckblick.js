@@ -188,7 +188,7 @@ export function starteRueckblick(h) {
     if (!b) return;
     if (b.dataset.rb === 'nochmal') { pausiert = false; zeigen(0); }
     if (b.dataset.rb === 'teilen') {
-      const text = t('Unser Rückblick „{reise}“: {n} Orte gestempelt, {km} unterwegs. 🗺️ Stempelpass', { reise: v.meta.n, n: gestempelt.length, km: meter(km) });
+      const text = t('Unser Rückblick „{reise}“: {n} Orte gestempelt, {km} unterwegs. 🗺️ Stamptrail', { reise: v.meta.n, n: gestempelt.length, km: meter(km) });
       try { await navigator.share({ title: v.meta.n, text }); } catch {}
     }
   });

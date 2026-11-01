@@ -69,7 +69,7 @@ export function starteOnboarding(h) {
           }).join('')}
           ${stempi({ groesse: 120, klasse: 'onb-held' })}
         </div>
-        <h1 data-rein style="--v:2;text-align:center"><span class="verlauf-text">Stempelpass</span></h1>
+        <h1 data-rein style="--v:2;text-align:center"><span class="verlauf-text">Stamptrail</span></h1>
         <p class="lead" style="text-align:center">${woerter(t('Eure Reiseziele auf einer Karte. Gemeinsam abstempeln – auch offline.'))}</p>
         <div class="onb-unten"><button class="knopf regenbogen voll" data-rein style="--v:6" data-weiter>${esc(t('Los geht’s'))}</button></div>`;
       if (s === 'sprache') return `
@@ -82,7 +82,7 @@ export function starteOnboarding(h) {
         <div class="onb-unten"><button class="knopf akzent voll" data-rein style="--v:5" data-weiter>${esc(t('Weiter'))}</button></div>`;
       if (s === 'hallo') return `
         <div class="notiz-zettel" data-rein style="--v:0">
-          <p>${esc(t('Hi, ich bin Adam! Stempelpass ist entstanden, als meine Familie nach Bangkok geflogen ist: Wir wollten alle Orte von unserem Zettel auf einer Karte haben und gemeinsam abhaken – auch ohne Internet.'))}</p>
+          <p>${esc(t('Hi, ich bin Adam! Stamptrail ist entstanden, als meine Familie nach Bangkok geflogen ist: Wir wollten alle Orte von unserem Zettel auf einer Karte haben und gemeinsam abhaken – auch ohne Internet.'))}</p>
           <p>${esc(t('Jetzt kannst du damit jede Reise planen. Ich wünsch dir eine unvergessliche!'))}</p>
           <span class="unterschrift">Adam</span>
           <svg class="unterschrift-strich" viewBox="0 0 130 14" aria-hidden="true"><path d="M4 9 Q40 2 70 8 T126 5"/></svg>

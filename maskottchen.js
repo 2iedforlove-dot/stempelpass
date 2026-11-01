@@ -1,4 +1,4 @@
-// Stempi – das Maskottchen von Stempelpass: ein kleiner Gummistempel mit Gesicht.
+// Stempi – das Maskottchen von Stamptrail: ein kleiner Gummistempel mit Gesicht.
 // Aufgebaut aus einzelnen SVG-Ebenen (Körper, Augen, Pupillen, Münder, Arme), die getrennt animiert werden –
 // wie bei den Rive-Figuren von Duolingo, nur ohne Bibliothek: CSS-Keyframes für Stimmungen, JS nur fürs
 // Blinzeln, den Blick zum Finger und die Reaktion beim Antippen.

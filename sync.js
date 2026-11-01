@@ -145,6 +145,7 @@ export class Sync {
   subId(tripId) { return 'sp' + tripId; }
 
   req(r, tripId, keys) {
+    if (this.getTrips().get(tripId)?.data.lokal) return; // Vorführ-Reise: bleibt auf dem Gerät
     if (!r.has.has(tripId)) r.has.set(tripId, {});
     this.send(r, ['REQ', this.subId(tripId), { authors: [keys.pk], kinds: [KIND] }]);
   }
@@ -214,7 +215,7 @@ export class Sync {
 
   async push(r, tripId, key) {
     const trip = this.getTrips().get(tripId);
-    if (!trip) return;
+    if (!trip || trip.data.lokal) return;
     const rec = trip.data.records[key];
     if (!rec) return;
     rec.ev = rec.ev || {};

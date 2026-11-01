@@ -147,7 +147,7 @@ function ansicht(tripId) {
   orte.sort((a, b) => (a.o ?? 1e9) - (b.o ?? 1e9) || String(a.n).localeCompare(b.n));
   orte.forEach((o, i) => { o.nr = i + 1; });
   const erledigt = orte.filter((o) => o.check).length;
-  const ausstehend = Object.entries(r).filter(([k, rec]) => (tr.data.synced[k] || 0) < rec.t).length;
+  const ausstehend = tr.data.lokal ? 0 : Object.entries(r).filter(([k, rec]) => (tr.data.synced[k] || 0) < rec.t).length;
   return { id: tripId, tr, meta, orte, leute, erledigt, ausstehend, eintraege };
 }
 
@@ -817,7 +817,7 @@ function checklistePunkte() {
     ['stempel', t('Den ersten Ort abstempeln'), t('Auf den Kreis neben einem Ort tippen'), alle.some((v) => v.orte.some((o) => o.check && o.check.by === ich.id)), 'zurreise'],
     ['einladen', t('Mitreisende einladen'), t('Per Link oder Code – alle sehen eure Stempel'), alle.some((v) => v.leute.length > 1) || !!ich.schritte.einladen, 'einladen'],
     ['guide', t('Einen Audio-Guide anhören'), t('Stempi erzählt dir die Geschichte jedes Orts'), !!ich.schritte.guide, 'zumguide'],
-    ['app', t('Auf den Startbildschirm legen'), t('Dann startet Stempelpass wie eine echte App'), istApp || !!ich.schritte.app, 'homescreen'],
+    ['app', t('Auf den Startbildschirm legen'), t('Dann startet Stamptrail wie eine echte App'), istApp || !!ich.schritte.app, 'homescreen'],
   ];
 }
 
@@ -1399,7 +1399,7 @@ function ortHtml(id, tab) {
   if (!o) return `<div class="leer-hinweis">${esc(t('Dieser Ort wurde gelöscht.'))}</div>`;
   const d = entfernung(o);
   const bild = bildFuerOrt(o);
-  const ringText = `${v.meta ? v.meta.n : 'Stempelpass'} • Nr ${String(o.nr).padStart(2, '0')} • ${o.n.slice(0, 22)}`;
+  const ringText = `${v.meta ? v.meta.n : 'Stamptrail'} • Nr ${String(o.nr).padStart(2, '0')} • ${o.n.slice(0, 22)}`;
   return `${seiteHg(bildFuerOrt(o, 'hg') || bildFuerTrip(v.meta, 'hg'))}
     <div class="nav-oben">
       <button class="kreisknopf glas-echt" data-aktion="zurueck" aria-label="${esc(t('Zurück'))}">${icon('zurueck', 22, 2.3)}</button>
@@ -1576,7 +1576,7 @@ function profilHtml() {
       ${zeile('bild', '#8e8e93', t('Bildnachweise'), pfeilRechts(16), 'nachweise')}
       ${rechtlichesFertig() ? zeile('schloss', '#8e8e93', t('Impressum & Datenschutz'), pfeilRechts(16), 'rechtliches') : ''}
     </div>
-    <p class="klein" style="text-align:center">Stempelpass · ${esc(t('Eure Daten sind Ende-zu-Ende-verschlüsselt.'))}</p>`;
+    <p class="klein" style="text-align:center">Stamptrail · ${esc(t('Eure Daten sind Ende-zu-Ende-verschlüsselt.'))}</p>`;
 }
 
 
@@ -1723,16 +1723,16 @@ function routeWahlDialog(welcher) {
 // ---------- Zum Home-Bildschirm ----------
 function homescreenDialog() {
   schrittErledigt('app');
-  if (istApp) return toast(t('Stempelpass ist schon als App installiert ✓'));
-  if (installEvent) { installEvent.prompt(); installEvent.userChoice.then((c) => { if (c.outcome === 'accepted') { sound.erfolg(); toast(t('Installiert – du findest Stempelpass jetzt auf dem Startbildschirm')); } }); installEvent = null; return; }
+  if (istApp) return toast(t('Stamptrail ist schon als App installiert ✓'));
+  if (installEvent) { installEvent.prompt(); installEvent.userChoice.then((c) => { if (c.outcome === 'accepted') { sound.erfolg(); toast(t('Installiert – du findest Stamptrail jetzt auf dem Startbildschirm')); } }); installEvent = null; return; }
   const codes = [...trips.values()].map((tr) => { const v = ansicht(tr.keys.id); return `${v.meta ? v.meta.n : '?'}: ${tr.code}`; }).join('\n');
   const schritte = istIOS
-    ? [['iosTeilen', t('Unten in Safari auf „Teilen“ tippen'), t('Das Quadrat mit dem Pfeil nach oben')], ['homescreen', t('„Zum Home-Bildschirm“ wählen'), t('Etwas nach unten scrollen, falls es nicht gleich zu sehen ist')], ['haken', t('Oben rechts auf „Hinzufügen“'), t('Fertig – das Stempelpass-Symbol liegt jetzt bei deinen Apps')]]
+    ? [['iosTeilen', t('Unten in Safari auf „Teilen“ tippen'), t('Das Quadrat mit dem Pfeil nach oben')], ['homescreen', t('„Zum Home-Bildschirm“ wählen'), t('Etwas nach unten scrollen, falls es nicht gleich zu sehen ist')], ['haken', t('Oben rechts auf „Hinzufügen“'), t('Fertig – das Stamptrail-Symbol liegt jetzt bei deinen Apps')]]
     : [['mehr', t('Das Browser-Menü öffnen'), t('Meist die drei Punkte oben rechts')], ['homescreen', t('„App installieren“ oder „Zum Startbildschirm hinzufügen“'), t('Je nach Browser heißt es etwas anders')], ['haken', t('Bestätigen'), t('Fertig – das Symbol liegt jetzt bei deinen Apps')]];
   const k = modal(`
     <div style="text-align:center"><img src="icons/icon-192.png" alt="" style="width:76px;height:76px;border-radius:18px;box-shadow:var(--schatten);margin:2px 0 14px"></div>
     <h2 style="text-align:center;padding:0">${esc(t('Auf den Startbildschirm'))}</h2>
-    <p class="lead" style="text-align:center">${esc(t('Dann startet Stempelpass wie eine echte App – im Vollbild und auch offline.'))}</p>
+    <p class="lead" style="text-align:center">${esc(t('Dann startet Stamptrail wie eine echte App – im Vollbild und auch offline.'))}</p>
     <ol class="anleitung">${schritte.map(([ic, a, b], n) => `<li><span class="nr">${n + 1}</span><span class="e-ico" style="background:${['#0a84ff', '#bf5af2', '#30c25a'][n]}">${icon(ic, 18)}</span><span><b>${esc(a)}</b><small>${esc(b)}</small></span></li>`).join('')}</ol>
     ${istIOS && trips.size ? `<div class="ios-hinweis"><b>${esc(t('Wichtig fürs iPhone:'))}</b> ${esc(t('Die App vom Startbildschirm hat einen eigenen Speicher. Tritt dort deinen Reisen einfach nochmal mit dem Code bei:'))}<pre class="codes">${esc(codes)}</pre><button class="knopf voll" id="hCodes">${icon('kopie', 18)} ${esc(t('Codes kopieren'))}</button></div>` : ''}`);
   const kc = k.querySelector('#hCodes');
@@ -2243,6 +2243,43 @@ function tripEntfernen(id) {
   allesZeichnen();
 }
 
+// ---------- Vorführ-Reise zum Filmen: ?demo ----------
+// Liegt nur auf diesem Gerät (data.lokal) und geht nie an die Relays – Code und QR dürfen also ins Video.
+// Mitreisende und Stempel sind ausgedacht: 7 der 12 Mödlinger Stationen sind schon gestempelt,
+// der nächste Stempel bringt die Silbernadel.
+async function vorfuehrReise() {
+  let id = [...trips.keys()].find((k) => trips.get(k).data.lokal);
+  const neu = !id;
+  if (neu) {
+    const p = KLASSIKER.find((x) => x.addr === 'lokal:moedling');
+    id = await tripLaden(newCode());
+    const tr = trips.get(id);
+    tr.data.lokal = true;
+    // Datensätze direkt anlegen statt über schreiben(): sonst meldet die App jeden ausgedachten Stempel als neu
+    const r = tr.data.records, jetzt = Date.now();
+    const rec = (v) => ({ v, t: jetzt, by: ich.id, ca: 0 });
+    const los = new Date(jetzt - 86400000); los.setHours(10, 0, 0, 0); // gestern ab 10 Uhr, alle 40 Minuten ein Stempel
+    const um = (i) => los.getTime() + i * 40 * 60000;
+    r.meta = rec({ n: t('Wochenende in Mödling'), e: '🥾', seit: um(0) - 3600000, ort: { lat: p.ziel.lat, lng: p.ziel.lng }, radius: p.ziel.radius, cc: p.ziel.cc, land: p.ziel.land, nadel: p.nadel, bf: p.orte[5].bf });
+    r['m:' + ich.id] = rec({ n: ich.name, c: ich.farbe });
+    const leute = [[t('Mama'), FARBEN[4]], [t('Papa'), FARBEN[3]], ['Lena', FARBEN[1]]].map(([n, c]) => { const m = zufall(8); r['m:' + m] = rec({ n, c }); return m; });
+    const wer = [ich.id, ...leute];
+    const orte = p.orte.map((o, i) => { const k = zufall(8); r['p:' + k] = rec({ n: o.n, k: o.k, lat: o.lat, lng: o.lng, o: i, pl: i, wd: o.wd, bf: o.bf }); return k; });
+    orte.slice(0, 7).forEach((k, i) => { r['c:' + k] = rec({ ok: true, by: wer[i % wer.length], at: um(i) }); });
+    r['f:' + zufall(8)] = rec({ ort: orte[0], text: t('Los geht’s beim Rathaus – zwölf Stempel bis Gold!'), at: um(0) + 120000, by: leute[0], fotos: [] });
+    r['f:' + zufall(8)] = rec({ ort: orte[5], text: t('Picknick in der Burgruine 🧺'), at: um(5) + 300000, by: leute[2], fotos: [] });
+    speichern(id, true);
+  }
+  aktuell = id;
+  tripListeSpeichern();
+  ui.filter = 'alle'; ui.kartenOrt = null;
+  if (ui.tab !== 'reisen') tabZeigen('reisen');
+  while (ui.stapel.reisen.length > 1) zurueck('reisen', true);
+  oeffnen({ s: 'reise', trip: id }, 'reisen');
+  allesZeichnen();
+  toast(neu ? t('Vorführ-Reise angelegt – sie bleibt nur auf diesem Gerät') : t('Deine Vorführ-Reise – sie bleibt nur auf diesem Gerät'), null, null, 4500);
+}
+
 // ---------- Dialoge ----------
 function codeDialog() {
   const k = modal(`
@@ -2562,12 +2599,12 @@ let planLadeNr = 0;
 
 // Die Bangkok-Liste vom Zettel als eingebauter Plan, damit "Entdecken" nie leer ist (ohne Hotel)
 const KLASSIKER = [{
-  addr: 'lokal:bangkok', lokal: true, n: 'Bangkok', e: BANGKOK.emoji, b: BANGKOK.bild, autor: 'Stempelpass',
+  addr: 'lokal:bangkok', lokal: true, n: 'Bangkok', e: BANGKOK.emoji, b: BANGKOK.bild, autor: 'Stamptrail',
   ziel: { n: 'Bangkok', land: 'Thailand', cc: 'th', lat: BANGKOK.ort.lat, lng: BANGKOK.ort.lng, radius: 25 }, tage: null,
   orte: BANGKOK.orte.filter((o) => o[1] !== 'hotel').map(([n, k, lat, lng]) => ({ n, k, lat, lng })),
 }, {
   // Muster für das Pilotprojekt: ein digitaler Wanderstempel. Stationen und Fotos aus Wikidata/Wikimedia Commons.
-  addr: 'lokal:moedling', lokal: true, n: 'Mödlinger Stempelrunde', e: '🥾', autor: 'Stempelpass', vorOrt: 150, nadel: [4, 8, 12],
+  addr: 'lokal:moedling', lokal: true, n: 'Mödlinger Stempelrunde', e: '🥾', autor: 'Stamptrail', vorOrt: 150, nadel: [4, 8, 12],
   text: 'Zwölf Stationen zwischen Altstadt, Burgruine, Husarentempel und Anninger. Gestempelt wird nur vor Ort. Ab 4 Stempeln gibt es die Wandernadel in Bronze, ab 8 in Silber und mit allen 12 in Gold.',
   ziel: { n: 'Mödling', land: 'Österreich', cc: 'at', lat: 48.0835, lng: 16.2755, radius: 5 }, tage: null,
   orte: [
@@ -2630,7 +2667,7 @@ function planKarte(p) {
   const s = planStats[p.addr];
   const bild = planBild(p);
   const passend = (ich.interessen || []).length && p.orte.filter((o) => passtZu(o.k, ich.interessen)).length >= p.orte.length / 2;
-  const unten = p.lokal ? esc(t('Von Stempelpass ausgewählt'))
+  const unten = p.lokal ? esc(t('Von Stamptrail ausgewählt'))
     : s ? [s.anzahl ? `${sterneHtml(s.sterne)} ${zahlText(s.sterne)} (${s.anzahl})` : esc(t('Noch keine Bewertung')), s.kopien ? esc(t('{n}× übernommen', { n: s.kopien })) : ''].filter(Boolean).join(' · ') : '';
   return `<button class="plan-karte glas" data-plan="${esc(p.addr)}">
     <span class="pl-bild">${bild ? `<img src="${esc(bild)}" alt="" loading="lazy">` : `<span class="cover-verlauf" style="background:${verlauf(p.addr)}">${esc(p.e || flagge(p.ziel.cc))}</span>`}
@@ -2659,7 +2696,7 @@ function entdeckenHtml() {
       <h2>${esc(e.fehler ? t('Gerade keine Verbindung') : z ? t('Noch kein Plan für {ziel}', { ziel: z.n }) : t('Noch keine Pläne'))}</h2>
       <p>${esc(e.fehler ? t('Pläne von anderen brauchen kurz Internet.') : t('Sei der Erste: Leg eine Reise an und teile euren Plan mit allen.'))}</p>
       <button class="knopf ${e.fehler ? '' : 'akzent'} voll" data-aktion="${e.fehler ? 'plaeneneu' : 'zielplan'}">${esc(e.fehler ? t('Nochmal versuchen') : z ? t('Plan für {ziel} erstellen', { ziel: z.n }) : t('Neue Reise'))}</button></div>` : ''}
-    ${klassiker.length ? `<div class="abschnitt">${esc(t('Stempelpass-Klassiker'))}</div><div class="plan-raster">${klassiker.map(planKarte).join('')}</div>` : ''}
+    ${klassiker.length ? `<div class="abschnitt">${esc(t('Stamptrail-Klassiker'))}</div><div class="plan-raster">${klassiker.map(planKarte).join('')}</div>` : ''}
     ${eigene.length ? `<div class="abschnitt">${esc(t('Deine veröffentlichten Pläne'))}</div>${eigene.map((m) => `<button class="e-zeile glas eigen-plan" data-plan="${esc(m.addr)}"><span class="e-ico" style="background:#30c25a">${icon('globus', 18)}</span>${esc(m.n)}<span class="wert">${pfeilRechts(16)}</span></button>`).join('')}` : ''}
     <p class="klein" style="text-align:center;margin-top:18px">${esc(t('Pläne sind öffentlich und ohne Konto – ohne Unterkünfte, Notizen und Fotos.'))}</p>`;
 }
@@ -2696,7 +2733,7 @@ function planSeiteHtml(addr) {
     <div class="ueber-held">
       <div class="plan-kopf glas">
         <div class="pl-autor"><span class="avatar" style="background:${verlauf(p.pk || addr).match(/#[0-9a-f]{6}/i)[0]}">${esc((p.autor || '?').slice(0, 1).toUpperCase())}</span>
-          <span><b>${esc(p.autor || t('Unbekannt'))}</b><small>${esc(eigen ? t('Dein Plan') : p.lokal ? t('Von Stempelpass ausgewählt') : t('veröffentlicht am {datum}', { datum }))}</small></span></div>
+          <span><b>${esc(p.autor || t('Unbekannt'))}</b><small>${esc(eigen ? t('Dein Plan') : p.lokal ? t('Von Stamptrail ausgewählt') : t('veröffentlicht am {datum}', { datum }))}</small></span></div>
         ${p.lokal ? '' : `<div class="pl-zahlen">
           <span><b>${s && s.anzahl ? zahlText(s.sterne) : '–'}</b><small>${s && s.anzahl ? sterneHtml(s.sterne) : esc(t('Sterne'))}</small></span>
           <span><b>${s ? s.kopien : '–'}</b><small>${esc(t('übernommen'))}</small></span>
@@ -2928,6 +2965,7 @@ function veroeffentlichenDialog() {
   ok.onclick = async () => {
     const gewaehlt = [...k.querySelectorAll('[data-vo]:checked')].map((c) => kandidaten[+c.dataset.vo]);
     if (gewaehlt.length < 2) return toast(t('Wähl mindestens 2 Orte'));
+    if (v.tr.data.lokal) return toast(t('Aus der Vorführ-Reise wird nichts veröffentlicht'));
     if (!navigator.onLine) return toast(t('Dafür braucht es Internet.'));
     const n = k.querySelector('#vTitel').value.trim() || v.meta.n;
     const text = k.querySelector('#vText').value.trim();
@@ -3149,9 +3187,9 @@ function einladenDialog() {
       <button class="knopf voll ${navigator.share ? '' : 'akzent'}" id="eKopie">${icon('kopie', 20)} ${esc(t('Link kopieren'))}</button>
     </div>
     <p class="klein" style="margin-top:14px">${esc(t('Am iPhone: Link in Safari öffnen, „Zum Home-Bildschirm“ wählen und in der App „Mit Code beitreten“ – der Code steht auch in der Nachricht.'))}</p>`);
-  const text = t('Komm in unsere Reise „{reise}“ im Stempelpass! 🗺️\n{link}\n\nCode: {code}', { reise: v.meta ? v.meta.n : '', link, code: tr.code });
+  const text = t('Komm in unsere Reise „{reise}“ auf Stamptrail! 🗺️\n{link}\n\nCode: {code}', { reise: v.meta ? v.meta.n : '', link, code: tr.code });
   const te = k.querySelector('#eTeilen');
-  if (te) te.onclick = async () => { try { await navigator.share({ title: 'Stempelpass', text }); } catch {} };
+  if (te) te.onclick = async () => { try { await navigator.share({ title: 'Stamptrail', text }); } catch {} };
   k.querySelector('#eKopie').onclick = async () => {
     try { await navigator.clipboard.writeText(text); sound.plopp(); fuehlen('leicht'); toast(t('Kopiert – jetzt in WhatsApp einfügen')); } catch { toast(t('Kopieren nicht möglich')); }
   };
@@ -3879,7 +3917,13 @@ async function start() {
   if (para.get('seite') === 'rechtliches') { history.replaceState(null, '', location.pathname); setTimeout(rechtlichesDialog, 400); }
   const planLink = para.get('plan');
   if (planLink) history.replaceState(null, '', location.pathname);
-  const planZeigen = () => { if (planLink && /^(lokal:[a-z]+|30078:[0-9a-f]{64}:stempelpass-plan:[a-z0-9]+)$/.test(planLink)) { tabZeigen('entdecken'); planOeffnen(planLink); } };
+  // Vorführ-Reise zum Filmen: ?demo
+  const demo = para.has('demo');
+  if (demo) history.replaceState(null, '', location.pathname);
+  const planZeigen = () => {
+    if (demo) return vorfuehrReise();
+    if (planLink && /^(lokal:[a-z]+|30078:[0-9a-f]{64}:stempelpass-plan:[a-z0-9]+)$/.test(planLink)) { tabZeigen('entdecken'); planOeffnen(planLink); }
+  };
   if (!ich.eingerichtet) einfuehrung(einladung && !schonDa ? einladung : null).then(planZeigen);
   else { if (einladung && !schonDa) tripBeitreten(einladung); planZeigen(); }
 

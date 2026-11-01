@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Stempelpass",
-  "short_name": "Stempelpass",
+  "name": "Stamptrail",
+  "short_name": "Stamptrail",
   "description": "Reiseziele auf der Karte abstempeln – gemeinsam, auch offline.",
   "start_url": "./",
   "scope": "./",

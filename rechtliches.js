@@ -6,7 +6,7 @@ export const VERANTWORTLICH = {
   adresse: '', // Straße Hausnummer, PLZ Ort, Österreich
   email: '',
 };
-export const STAND = '2026-10-31';
+export const STAND = '2026-11-01';
 export const rechtlichesFertig = () => Object.values(VERANTWORTLICH).every((x) => x.trim());
 
 const RELAYS = ['nos.lol', 'relay.damus.io', 'relay.primal.net', 'nostr.mom', 'offchain.pub', 'nostr.oxtr.dev'];
@@ -23,7 +23,7 @@ export function rechtlichesHtml(sprache, esc) {
   return en ? `${entwurf}
 <h2>Legal notice</h2>
 <p><b>Media owner and publisher:</b> ${name}, ${adresse}<br>Email: ${email}</p>
-<p>Stempelpass is a free, private and non-commercial project.</p>
+<p>Stamptrail is a free, private and non-commercial project.</p>
 <p><b>Basic orientation (§ 25 Austrian Media Act):</b> an app in which families and groups plan destinations, stamp them together and keep a record of their trip.</p>
 <p><b>Sources:</b> map data © OpenStreetMap contributors; maps from OpenFreeMap (OpenMapTiles) and Protomaps; information and photos about places from Wikipedia, Wikidata and Wikimedia Commons under free licences (details under “Photo credits” in your profile); weather from Open-Meteo.</p>
 
@@ -67,12 +67,12 @@ export function rechtlichesHtml(sprache, esc) {
 <h3>Your rights</h3>
 <p>You have the right to access, rectification, erasure, restriction, data portability and objection, and you can withdraw consent at any time. Write to ${email}. Since we keep no accounts and contents are encrypted, we usually cannot attribute data to a person (Art. 11 GDPR) – you can delete most of it directly in the app. You can lodge a complaint with the Austrian Data Protection Authority, Barichgasse 40–42, 1030 Vienna, <a href="https://www.dsb.gv.at" target="_blank" rel="noopener">dsb.gv.at</a>.</p>
 <h3>Children</h3>
-<p>Stempelpass is made for families. Children under 14 should use the app together with their parents.</p>
+<p>Stamptrail is made for families. Children under 14 should use the app together with their parents.</p>
 <p class="recht-stand">Last updated: ${stand}</p>`
     : `${entwurf}
 <h2>Impressum</h2>
 <p><b>Medieninhaber und Herausgeber:</b> ${name}, ${adresse}<br>E-Mail: ${email}</p>
-<p>Stempelpass ist ein kostenloses, privates und nicht gewerbliches Projekt.</p>
+<p>Stamptrail ist ein kostenloses, privates und nicht gewerbliches Projekt.</p>
 <p><b>Grundlegende Richtung (§ 25 MedienG):</b> eine App, mit der Familien und Gruppen Reiseziele planen, gemeinsam abstempeln und ihre Reise festhalten.</p>
 <p><b>Quellen:</b> Kartendaten © OpenStreetMap-Mitwirkende; Karten von OpenFreeMap (OpenMapTiles) und Protomaps; Infos und Fotos zu Orten aus Wikipedia, Wikidata und Wikimedia Commons unter freien Lizenzen (Einzelheiten unter „Bildnachweise“ im Profil); Wetter von Open-Meteo.</p>
 
@@ -116,6 +116,6 @@ export function rechtlichesHtml(sprache, esc) {
 <h3>Deine Rechte</h3>
 <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch und kannst eine Einwilligung jederzeit widerrufen. Schreib an ${email}. Weil wir keine Konten führen und Inhalte verschlüsselt sind, können wir Daten meist keiner Person zuordnen (Art. 11 DSGVO) – das meiste kannst du direkt in der App löschen. Beschweren kannst du dich bei der Österreichischen Datenschutzbehörde, Barichgasse 40–42, 1030 Wien, <a href="https://www.dsb.gv.at" target="_blank" rel="noopener">dsb.gv.at</a>.</p>
 <h3>Kinder</h3>
-<p>Stempelpass ist für Familien gemacht. Kinder unter 14 Jahren sollen die App gemeinsam mit ihren Eltern nutzen.</p>
+<p>Stamptrail ist für Familien gemacht. Kinder unter 14 Jahren sollen die App gemeinsam mit ihren Eltern nutzen.</p>
 <p class="recht-stand">Stand: ${stand}</p>`;
 }

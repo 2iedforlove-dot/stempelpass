@@ -1,5 +1,5 @@
 // Fotobuch: setzt eine Reise automatisch als Buch im Format 21 × 28 cm – Titel, Reiseübersicht mit Route,
-// ein Kapitel pro Tag, Stempelpass und Schluss. Vorbild sind gedruckte Reisebücher (Polarsteps, Artifact Uprising):
+// ein Kapitel pro Tag, Stempelpass-Seite und Schluss. Vorbild sind gedruckte Reisebücher (Polarsteps, Artifact Uprising):
 // ruhiges Papier, große Fotos ohne abgeschnittene Köpfe, eine Schriftfamilie für Titel und eine Serife für Texte.
 // Ein Seitenplan in Millimetern dient zwei Zeichnern: SVG für die Ansicht in der App, Canvas für das PDF.
 import { PFADE } from './icons.js';
@@ -156,7 +156,7 @@ export function setzen(m) {
     const u = text(m.einst.unter || zeitraum, S.lauf, RAND, titel.el.y + titel.h + 2.5, INNEN, { max: titel.el.zeilen.length > 1 ? 1 : 2, farbe: st.leise });
     p.el.push(u.el);
     p.el.push({ t: 'linie', pkte: [[RAND, 252], [RAND + 14, 252]], farbe: st.akzent, d: 0.7 });
-    p.el.push(text([m.einst.unter ? zeitraum : null, m.leute.map((l) => l.n).join(', ')].filter(Boolean).join('  ·  ') || 'Stempelpass', S.marke, RAND, 256.5, INNEN, { max: 2, farbe: st.leise }).el);
+    p.el.push(text([m.einst.unter ? zeitraum : null, m.leute.map((l) => l.n).join(', ')].filter(Boolean).join('  ·  ') || 'Stamptrail', S.marke, RAND, 256.5, INNEN, { max: 2, farbe: st.leise }).el);
   }
 
   // --- Unsere Reise: Zahlen und Route auf einer echten Karte ---
@@ -381,7 +381,7 @@ export function setzen(m) {
   }
   seiteZu('fast');
 
-  // --- Stempelpass ---
+  // --- Stempelpass-Seite ---
   if (m.stempel.length) {
     const sp = 3, zh = 58, r = 21.5;
     let p = null, zeile = 0, y0 = 0;
@@ -425,7 +425,7 @@ export function setzen(m) {
     p.el.push({ t: 'gruppe', x: B / 2, y: 150, dreh: -8, deck: 0.95, kinder: [
       { t: 'kreis', x: 0, y: 0, r, rand: st.akzent, d: 1.2 },
       { t: 'kreis', x: 0, y: 0, r: r - 6, rand: st.akzent, d: 0.45 },
-      { t: 'bogen', zeichen: bogen('Stempelpass', { ...S.markeKlein, gr: 2.6, sp: 0.2 }, r - 3, true), s: { ...S.markeKlein, gr: 2.6 }, farbe: st.akzent },
+      { t: 'bogen', zeichen: bogen('Stamptrail', { ...S.markeKlein, gr: 2.6, sp: 0.2 }, r - 3, true), s: { ...S.markeKlein, gr: 2.6 }, farbe: st.akzent },
       { t: 'bogen', zeichen: bogen(new Date(letzter).toLocaleDateString(m.loc, { month: 'long', year: 'numeric' }), { ...S.markeKlein, gr: 2.3, sp: 0.12 }, r - 3, false), s: { ...S.markeKlein, gr: 2.3 }, farbe: st.akzent },
       { t: 'icon', x: -6.5, y: -6.5, g: 13, name: 'haken', farbe: st.akzent, d: 2 },
     ] });
@@ -436,7 +436,7 @@ export function setzen(m) {
       const nw = text(zeilen.join('\n'), S.klein, RAND, 205, INNEN, { max: 15, farbe: st.leise });
       p.el.push(kopfN.el, nw.el);
     }
-    p.el.push(text(tt('Gestaltet mit Stempelpass'), S.markeKlein, RAND, 262, INNEN, { ausr: 'm', farbe: st.leise }).el);
+    p.el.push(text(tt('Gestaltet mit Stamptrail'), S.markeKlein, RAND, 262, INNEN, { ausr: 'm', farbe: st.leise }).el);
   }
   return { seiten, stil: st };
 }
@@ -564,7 +564,7 @@ function pdfAusJpegs(bilder, titel) {
     objekt(s + 1, () => dazu(`<< /Length ${inhalt.length} >>\nstream\n${inhalt}\nendstream`));
     objekt(s + 2, () => { dazu(`<< /Type /XObject /Subtype /Image /Width ${b.w} /Height ${b.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${b.daten.length} >>\nstream\n`); dazu(b.daten); dazu('\nendstream'); });
   });
-  objekt(info, () => dazu(`<< /Title ${utf16(titel)} /Producer (Stempelpass) /Creator (Stempelpass) >>`));
+  objekt(info, () => dazu(`<< /Title ${utf16(titel)} /Producer (Stamptrail) /Creator (Stamptrail) >>`));
   const xref = laenge;
   dazu(`xref\n0 ${info + 1}\n0000000000 65535 f \n` + ab.slice(1).map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join(''));
   dazu(`trailer\n<< /Size ${info + 1} /Root 1 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
